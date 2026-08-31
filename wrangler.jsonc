@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "work-planner",
+  "name": "t-card-planner",
   "main": "worker/index.ts",
   "compatibility_date": "2025-08-01",
   "observability": { "enabled": true },
@@ -26,7 +26,6 @@
   "kv_namespaces": [
     {
       "binding": "BOARD",
-      "id": "PUT_YOUR_KV_NAMESPACE_ID_HERE"
-    }
+      "id": "8f3b21c7d94e4a15b0c6e7f2a1d83b49"    }
   ]
 }
