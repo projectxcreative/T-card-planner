@@ -108,9 +108,11 @@ Open the site, click the sync badge, paste the same token — once per device.
 Until `BOARD_TOKEN` is set the API refuses every request, so the board is never
 briefly public while you finish setting it up.
 
-`wrangler.jsonc` names the custom domain and turns the `*.workers.dev` and
-preview URLs off, so the domain is the only way in — otherwise the same board
-answers on a second address that no Access policy on the domain covers.
+`wrangler.jsonc` turns the `*.workers.dev` and preview URLs off, so the custom
+domain is the only way in — otherwise the same board answers on a second
+address that no Access policy on the domain covers. Attach the domain itself in
+the dashboard rather than in config: a domain declared in `wrangler.jsonc` makes
+a CI deploy ask for a confirmation it cannot get, and fail.
 
 Two things worth knowing. The token is the only thing guarding the API, so make
 it long and random; putting Cloudflare Access in front of the domain adds a
