@@ -208,11 +208,22 @@ export function save(state: BoardState): void {
   }
 }
 
+export const SEED_PREFIX = 'seed-';
+
+/** Has this board only ever held the demo cards? Connecting such a device to a
+ *  server that already has a board can safely take the server's copy; a board
+ *  with real work on it has to ask first. */
+export function isUntouched(state: BoardState): boolean {
+  const ids = Object.keys(state.cards);
+  return ids.length === 0 || ids.every((id) => id.startsWith(SEED_PREFIX));
+}
+
 /** A first run with an empty board looks broken, so show how the pieces fit. */
 function seedBoard(): BoardState {
   const today = todayKey();
   const cards = [
     newCard('Welcome — click a card to open it', {
+      id: `${SEED_PREFIX}welcome`,
       colour: 'blue',
       estimate: 0.5,
       description:
@@ -220,8 +231,17 @@ function seedBoard(): BoardState {
         '<ul><li>Drag cards between days, or up and down within a day</li>' +
         '<li>Press <code>N</code> for a new card, <code>/</code> to search</li></ul>',
     }),
-    newCard('Try dragging me to tomorrow', { colour: 'green', status: 'doing', estimate: 1 }),
-    newCard('Anything unscheduled lives in the backlog', { colour: 'amber', estimate: 2 }),
+    newCard('Try dragging me to tomorrow', {
+      id: `${SEED_PREFIX}drag`,
+      colour: 'green',
+      status: 'doing',
+      estimate: 1,
+    }),
+    newCard('Anything unscheduled lives in the backlog', {
+      id: `${SEED_PREFIX}backlog`,
+      colour: 'amber',
+      estimate: 2,
+    }),
   ];
   return {
     version: VERSION,

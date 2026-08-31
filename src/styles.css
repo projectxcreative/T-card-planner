@@ -76,12 +76,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .app {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   height: 100%;
 }
 
 .app.has-drawer { grid-template-columns: minmax(0, 1fr) 380px; }
-.app.has-drawer .topbar { grid-column: 1 / -1; }
+.app.has-drawer .topbar,
+.app.has-drawer .conflict { grid-column: 1 / -1; }
+.app.has-drawer .drawer { grid-row: 3; }
 
 /* ---------- top bar ---------- */
 
@@ -232,7 +234,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------- the T-card ---------- */
 
-.tcard-slot { cursor: grab; touch-action: manipulation; }
+.tcard-slot {
+  cursor: grab;
+  /* The board pans sideways and the columns pan down, so a swipe from a card
+     must be allowed both ways; the touch sensor's press delay is what tells a
+     drag apart from a scroll. */
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
 .tcard-slot:active { cursor: grabbing; }
 .tcard-slot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
 
@@ -484,6 +495,79 @@ button, input, select, textarea { font: inherit; color: inherit; }
   pointer-events: none;
 }
 
+
+/* ---------- sync ---------- */
+
+.sync { position: relative; }
+
+.sync-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sync-badge:hover { background: var(--surface-2); color: var(--text); }
+
+.sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); flex: none; }
+.sync-badge.is-idle .sync-dot { background: var(--c-green); }
+.sync-badge.is-saving .sync-dot { background: var(--c-blue); animation: sync-pulse 1s ease-in-out infinite; }
+.sync-badge.is-offline .sync-dot { background: var(--c-amber); }
+.sync-badge.is-conflict .sync-dot,
+.sync-badge.is-unauthorised .sync-dot,
+.sync-badge.is-unconfigured .sync-dot { background: var(--c-red); }
+.sync-badge.is-conflict, .sync-badge.is-unauthorised, .sync-badge.is-unconfigured { color: var(--danger); border-color: var(--danger); }
+
+@keyframes sync-pulse { 50% { opacity: 0.3; } }
+
+.sync-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 280px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-2);
+}
+
+.sync-detail { margin: 0 0 10px; font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
+.sync-detail.dim { color: var(--text-faint); }
+.sync-actions { display: flex; gap: 6px; }
+.sync-actions .ghost { flex: 1; }
+
+.sync-input {
+  flex: 2;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.conflict {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 9px 16px;
+  background: var(--c-amber-tint);
+  border-bottom: 1px solid var(--c-amber);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.conflict-actions { margin-left: auto; display: flex; gap: 6px; }
+.conflict-actions .ghost { background: var(--surface); }
+
 /* ---------- narrow screens ---------- */
 
 @media (max-width: 860px) {
@@ -498,3 +582,45 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 .rt-loading { min-height: 217px; background: var(--surface); }
+
+@media (max-width: 700px) {
+  /* One column at a time, snapped — a five-day board doesn't fit a phone. */
+  .board {
+    scroll-snap-type: x mandatory;
+    gap: 10px;
+    padding: 10px 12px 14px;
+  }
+
+  .lane, .lane.is-backlog {
+    flex: 0 0 84vw;
+    min-width: 0;
+    max-width: none;
+    scroll-snap-align: center;
+  }
+
+  /* Defaults are fine on a phone, and backups belong on the desktop; on a
+     screen this small every hidden control is a row of board you get back. */
+  .toggle, .capacity, .brand-name, .desktop-only { display: none; }
+
+  .topbar { gap: 8px; padding: 8px 12px; }
+  .topbar-tools { gap: 6px; width: 100%; }
+  .weeknav { flex: 1; min-width: 0; }
+  .weekrange { margin-left: 6px; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
+  .search { flex: 1; width: auto; min-width: 0; }
+  .sync-label { display: none; }
+  .sync-badge { padding: 5px 8px; }
+  .sync-pop { width: min(280px, calc(100vw - 24px)); }
+  .conflict { padding: 9px 12px; }
+  .conflict-actions { margin-left: 0; width: 100%; }
+  .conflict-actions .ghost { flex: 1; }
+
+  /* Comfortable touch targets. */
+  .lane-add, .ghost, .seg { min-height: 36px; }
+  .swatch { width: 30px; height: 30px; }
+}
+
+/* Keep the board clear of the home indicator and notch. */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .board { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+  .topbar { padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
+}

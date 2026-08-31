@@ -4,7 +4,8 @@ import {
   DragOverlay,
   KeyboardSensor,
   MeasuringStrategy,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCorners,
   pointerWithin,
   rectIntersection,
@@ -36,6 +37,8 @@ import {
   weekKeys,
 } from './dates';
 import { summarise } from './cardText';
+import { useSync } from './sync';
+import { ConflictBar } from './components/SyncBadge';
 
 const SETTINGS_KEY = 'tcard-planner.settings.v1';
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
@@ -93,6 +96,10 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [board]);
 
+  // localStorage stays the local copy of record; the Worker keeps devices level.
+  const adoptRemote = useCallback((state: BoardState) => dispatch({ type: 'replace', state }), []);
+  const sync = useSync(board, adoptRemote);
+
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     document.documentElement.dataset.theme = settings.theme;
@@ -101,6 +108,16 @@ export default function App() {
   /* ---------- derived ---------- */
 
   const days = useMemo(() => weekKeys(anchor, settings.includeWeekend), [anchor, settings.includeWeekend]);
+
+  // On a phone only one column fits, and on a laptop a long week can overflow.
+  // Either way the useful column is today's, not the backlog on the far left.
+  const boardRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const today = boardRef.current?.querySelector('.lane.is-today');
+    // Instant, not smooth: an animation here would fight a user who starts
+    // dragging or scrolling the moment the board appears.
+    today?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
+  }, [anchor]);
 
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -225,7 +242,10 @@ export default function App() {
 
   const sensors = useSensors(
     // A small threshold keeps a plain click on a card as "open", not "drag".
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    // On touch a short press starts the drag, so a plain swipe still scrolls
+    // the column. Tolerance lets a finger wobble during that press.
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -323,7 +343,10 @@ export default function App() {
         onExport={exportBoard}
         onImport={importBoard}
         searchRef={searchRef}
+        sync={sync}
       />
+
+      <ConflictBar sync={sync} />
 
       <DndContext
         sensors={sensors}
@@ -334,7 +357,7 @@ export default function App() {
         onDragEnd={onDragEnd}
         onDragCancel={() => endDrag(true)}
       >
-        <main className="board">
+        <main className="board" ref={boardRef}>
           <Lane
             id={BACKLOG}
             title="Backlog"

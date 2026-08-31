@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "t-card-planner",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-08-01",
+  "observability": { "enabled": true },
+
+  // The built SPA. `single-page-application` sends unknown paths to index.html
+  // so a refresh on any URL still loads the board.
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  // Replace `id` with the namespace you create:
+  //   npx wrangler kv namespace create BOARD
+  "kv_namespaces": [
+    {
+      "binding": "BOARD",
+      "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+    }
+  ]
+}

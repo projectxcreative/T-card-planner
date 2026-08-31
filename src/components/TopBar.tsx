@@ -1,5 +1,7 @@
 import { useRef } from 'react';
 import { formatWeekRange } from '../dates';
+import SyncBadge from './SyncBadge';
+import type { Sync } from '../sync';
 
 export interface Settings {
   includeWeekend: boolean;
@@ -22,10 +24,11 @@ interface Props {
   onExport: () => void;
   onImport: (file: File) => void;
   searchRef: React.RefObject<HTMLInputElement | null>;
+  sync: Sync;
 }
 
 export default function TopBar(props: Props) {
-  const { weekKeys, onShiftWeek, onToday, query, onQuery, settings, onSettings, overdueCount, onRollOver, canUndo, onUndo, onExport, onImport, searchRef } = props;
+  const { weekKeys, onShiftWeek, onToday, query, onQuery, settings, onSettings, overdueCount, onRollOver, canUndo, onUndo, onExport, onImport, searchRef, sync } = props;
   const fileRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -109,12 +112,13 @@ export default function TopBar(props: Props) {
           {settings.theme === 'dark' ? '☀' : '☾'}
         </button>
 
-        <button type="button" className="ghost" onClick={onExport} title="Download a JSON backup">
+        <button type="button" className="ghost desktop-only" onClick={onExport} title="Download a JSON backup">
           Export
         </button>
-        <button type="button" className="ghost" onClick={() => fileRef.current?.click()} title="Replace the board from a JSON backup">
+        <button type="button" className="ghost desktop-only" onClick={() => fileRef.current?.click()} title="Replace the board from a JSON backup">
           Import
         </button>
+        <SyncBadge sync={sync} />
         <input
           ref={fileRef}
           type="file"
