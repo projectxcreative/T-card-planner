@@ -18,13 +18,6 @@
   --radius: 8px;
   /* Ink on a solid accent fill. */
   --head-ink: #ffffff;
-  /* Card stock. Barely off-white — real cards aren't screen-white, but the
-     board around them is untouched. */
-  --card-paper: #fbfaf7;
-  --card-line: rgba(16, 24, 40, 0.15);
-  --card-edge: rgba(16, 24, 40, 0.16);
-  --card-sheen: rgba(255, 255, 255, 0.3);
-  --rail: rgba(16, 24, 40, 0.13);
 
   /* Status and warning colours. These are the app's own, fixed: the category
      palette next door is yours to change, and a "Blocked" pill that turned
@@ -53,15 +46,8 @@
   --danger: #f0736b;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 10px 28px rgba(0, 0, 0, 0.5);
-  /* Dark theme's fills are pastel, so the ink flips to near-black. */
+  /* Dark theme's accent is pastel, so the ink on it flips to near-black. */
   --head-ink: #0f141b;
-  /* Lighter than the lane behind it — on a dark board the shadow does nothing,
-     so the stock itself has to be what stands the card off the surface. */
-  --card-paper: #242c39;
-  --card-line: rgba(255, 255, 255, 0.1);
-  --card-edge: rgba(0, 0, 0, 0.5);
-  --card-sheen: rgba(255, 255, 255, 0.07);
-  --rail: rgba(0, 0, 0, 0.42);
 
   --s-todo: #8b9ab0;
   --s-doing: #5b8cff;    --s-doing-tint: #1b2740;
@@ -215,7 +201,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .lane-drop {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
   padding: 0 10px 10px;
   overflow-y: auto;
   flex: 1;
@@ -257,100 +243,51 @@ button, input, select, textarea { font: inherit; color: inherit; }
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
-  /* Room beneath each card for the rail it sits in. */
-  position: relative;
-  padding-bottom: 7px;
 }
 .tcard-slot:active { cursor: grabbing; }
-.tcard-slot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.tcard-slot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
 
-/* The pocket lip the card is slotted into. A column of these reads as a rack
-   rather than a list, which is most of what makes a board look like a board. */
-.tcard-slot::after {
-  content: '';
-  position: absolute;
-  left: 2px;
-  right: 2px;
-  bottom: 1px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--rail);
-  box-shadow: 0 1px 0 var(--card-sheen);
-}
-/* A T-card is one piece of stock cut to a T: a full-width coloured head with
-   the category on it, and a narrower stem hanging below carrying the detail.
-   The card is drawn as that silhouette, with the board showing either side of
-   the stem — a coloured box with a white panel inside is a picture frame, not
-   a T-card.
-
-   `drop-shadow` follows the painted shape, so the shadow is T-shaped too; a
-   box-shadow would draw a rectangle around the whole thing and give the game
-   away. */
 .tcard {
-  /* Overridden by whichever `.c-*` class the card wears; here so a card is
-     never left with no colour at all. */
   --c: var(--c-slate);
   --c-ink: var(--c-slate-ink);
   /* A category's body tint is mixed from its own colour, so a colour picked in
-     Settings brings its pale companion with it rather than needing a second.
-     Mixed into the card stock rather than the lane behind it: the stem is
-     paper, and a tint that ignored that would read as a hole in the card. */
-  --c-tint: color-mix(in srgb, var(--c) 13%, var(--card-paper));
-  /* How far the stem is drawn in on each side. A percentage, so the shape
-     holds from a phone column to a wide one. */
-  --stem: 11%;
-  filter:
-    drop-shadow(0 1px 0.5px rgba(16, 24, 40, 0.13))
-    drop-shadow(0 2px 3px rgba(16, 24, 40, 0.11));
-  transition: filter 120ms, transform 120ms;
+     Settings brings its pale companion with it rather than needing a second. */
+  --c-tint: color-mix(in srgb, var(--c) 13%, var(--surface));
+  background: var(--c);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+  transition: box-shadow 120ms, transform 120ms;
 }
 
-/* Lifting a card raises its shadow rather than moving it, so nothing shifts
-   under the pointer on the way into a drag. */
-.tcard-slot:hover .tcard {
-  filter:
-    drop-shadow(0 2px 1px rgba(16, 24, 40, 0.14))
-    drop-shadow(0 6px 10px rgba(16, 24, 40, 0.18));
-}
-.tcard.is-dragging {
-  filter: drop-shadow(0 10px 18px rgba(16, 24, 40, 0.3));
-  /* Out of the rack and held at an angle, the way a lifted card actually sits. */
-  transform: rotate(1.6deg) scale(1.02);
-}
+.tcard-slot:hover .tcard { box-shadow: var(--shadow-2); }
+.tcard.is-dragging { box-shadow: var(--shadow-2); transform: rotate(1.4deg); }
 .tcard.is-dimmed { opacity: 0.32; }
 
-/* The head: the bar of the T, and the only coloured part of the card. */
+/* The head is the full-width bar of the T … */
 .tcard-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 9px 6px;
-  background: var(--c);
-  border-radius: 3px 3px 0 0;
-  box-shadow: inset 0 1px 0 var(--card-sheen);
+  padding: 4px 9px 5px;
+  /* Whichever of black or white reads on this category's own colour, rather
+     than one ink per theme — the colours are the user's to pick. */
   color: var(--c-ink);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.055em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
 .tcard-cat { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tcard-est { margin-left: auto; opacity: 0.85; font-variant-numeric: tabular-nums; }
 
-/* The stem: paper, narrower than the head, hanging from it. Only the bottom
-   corners are eased — the top edge is where it meets the head. */
+/* … and the body is the inset stem, leaving the colour showing down both sides. */
 .tcard-body {
-  margin: 0 var(--stem);
-  padding: 9px 10px 10px;
-  background: var(--card-paper);
-  /* No top edge: that is where the stem meets the head. The bottom line is the
-     thickness of the card, which is what keeps it looking like an object
-     rather than a painted rectangle. */
-  border: 1px solid var(--card-line);
-  border-top: 0;
-  border-radius: 0 0 3px 3px;
-  box-shadow: 0 1px 0 var(--card-sheen);
+  margin: 0 3px 3px;
+  padding: 8px 9px 9px;
+  background: var(--surface);
+  border-radius: 5px;
 }
 
 .tcard-title {
@@ -402,7 +339,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .c-pink { --c: var(--c-pink); --c-ink: var(--c-pink-ink); }
 
 .tcard.s-done .tcard-body { background: var(--surface-2); }
-.tcard.s-done { box-shadow: inset 0 1px 0 var(--card-sheen), 0 1px 1px rgba(16, 24, 40, 0.08); }
 .tcard.s-done .tcard-title { text-decoration: line-through; color: var(--text-faint); }
 .tcard.s-done { opacity: 0.72; }
 .tcard.s-blocked .tcard-body { background: var(--s-blocked-tint); }
