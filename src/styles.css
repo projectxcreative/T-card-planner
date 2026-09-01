@@ -16,18 +16,19 @@
   --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
   --shadow-2: 0 8px 24px rgba(16, 24, 40, 0.14);
   --radius: 8px;
-  /* Ink on a category strip: white on light-theme's saturated strips. */
+  /* Ink on a solid accent fill. */
   --head-ink: #ffffff;
 
-  /* T-card category colours: strip, and a tint for the card body */
-  --c-slate: #64748b;   --c-slate-tint: #f1f5f9;
-  --c-blue: #2f6df6;    --c-blue-tint: #eaf1ff;
-  --c-teal: #0b7f75;    --c-teal-tint: #e3f6f3;
-  --c-green: #3f9142;   --c-green-tint: #e9f5ea;
-  --c-amber: #a86a00;   --c-amber-tint: #fdf2dc;
-  --c-red: #d4453c;     --c-red-tint: #fdeceb;
-  --c-purple: #7c4ddb;  --c-purple-tint: #f1ebfd;
-  --c-pink: #cd4a8c;    --c-pink-tint: #fdecf4;
+  /* Status and warning colours. These are the app's own, fixed: the category
+     palette next door is yours to change, and a "Blocked" pill that turned
+     green with it would be worse than useless.
+     The category colours themselves — `--c-slate` and friends — are written
+     into the document from the board's own settings; see categories.tsx. */
+  --s-todo: #64748b;
+  --s-doing: #2f6df6;    --s-doing-tint: #eaf1ff;
+  --s-blocked: #d4453c;  --s-blocked-tint: #fdeceb;
+  --s-done: #3f9142;     --s-done-tint: #e9f5ea;
+  --warn: #a86a00;       --warn-tint: #fdf2dc;
 }
 
 :root[data-theme='dark'] {
@@ -45,17 +46,14 @@
   --danger: #f0736b;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 10px 28px rgba(0, 0, 0, 0.5);
-  /* Dark theme's strips are pastel, so the ink flips to near-black. */
+  /* Dark theme's fills are pastel, so the ink flips to near-black. */
   --head-ink: #0f141b;
 
-  --c-slate: #8b9ab0;   --c-slate-tint: #232b36;
-  --c-blue: #5b8cff;    --c-blue-tint: #1b2740;
-  --c-teal: #2fb3a3;    --c-teal-tint: #16302f;
-  --c-green: #5cb860;   --c-green-tint: #1a2c1c;
-  --c-amber: #e0a336;   --c-amber-tint: #2f2716;
-  --c-red: #ef6a61;     --c-red-tint: #35201f;
-  --c-purple: #a37cf0;  --c-purple-tint: #272044;
-  --c-pink: #e57bad;    --c-pink-tint: #331d2a;
+  --s-todo: #8b9ab0;
+  --s-doing: #5b8cff;    --s-doing-tint: #1b2740;
+  --s-blocked: #ef6a61;  --s-blocked-tint: #35201f;
+  --s-done: #5cb860;     --s-done-tint: #1a2c1c;
+  --warn: #e0a336;       --warn-tint: #2f2716;
 }
 
 * { box-sizing: border-box; }
@@ -84,6 +82,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .app.has-drawer .topbar,
 .app.has-drawer .conflict { grid-column: 1 / -1; }
 .app.has-drawer .drawer { grid-row: 3; }
+/* The conflict bar's row stands empty most of the time, and an auto-placed
+   board drops into it — leaving the drawer stranded on the row below. */
+.board { grid-row: 3; }
 
 /* ---------- top bar ---------- */
 
@@ -101,7 +102,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .brand-mark {
   width: 16px; height: 16px; border-radius: 3px;
-  background: linear-gradient(180deg, var(--accent) 0 42%, var(--c-amber) 42% 100%);
+  background: linear-gradient(180deg, var(--accent) 0 42%, var(--warn) 42% 100%);
 }
 
 .brand-name { white-space: nowrap; }
@@ -134,10 +135,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--surface-2);
 }
 
-.search:focus-visible, .capacity input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
-.toggle, .capacity { display: flex; align-items: center; gap: 5px; color: var(--text-dim); white-space: nowrap; }
-.capacity input { width: 46px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
+.search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ---------- board ---------- */
 
@@ -195,8 +193,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 .lane-load { height: 3px; margin: 0 12px 8px; background: var(--line-soft); border-radius: 2px; overflow: hidden; }
-.lane-load span { display: block; height: 100%; background: var(--c-green); transition: width 160ms; }
-.lane-load.is-over-capacity span { background: var(--c-red); }
+.lane-load span { display: block; height: 100%; background: var(--s-done); transition: width 160ms; }
+.lane-load.is-over-capacity span { background: var(--s-blocked); }
 
 .lane-drop {
   display: flex;
@@ -248,8 +246,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .tcard-slot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
 
 .tcard {
+  /* Overridden by whichever `.c-*` class the card wears; here so a card is
+     never left with no colour at all. */
   --c: var(--c-slate);
-  --c-tint: var(--c-slate-tint);
+  --c-ink: var(--c-slate-ink);
+  /* A category's body tint is mixed from its own colour, so a colour picked in
+     Settings brings its pale companion with it rather than needing a second. */
+  --c-tint: color-mix(in srgb, var(--c) 13%, var(--surface));
   background: var(--c);
   border-radius: var(--radius);
   box-shadow: var(--shadow-1);
@@ -267,7 +270,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   align-items: center;
   gap: 6px;
   padding: 4px 9px 5px;
-  color: var(--head-ink);
+  color: var(--c-ink);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -318,25 +321,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 
-.p-doing { color: var(--c-blue); border-color: var(--c-blue); background: var(--c-blue-tint); }
-.p-blocked { color: var(--c-red); border-color: var(--c-red); background: var(--c-red-tint); }
-.p-done { color: var(--c-green); border-color: var(--c-green); background: var(--c-green-tint); }
-.p-tasks.is-complete { color: var(--c-green); border-color: var(--c-green); background: var(--c-green-tint); }
+.p-doing { color: var(--s-doing); border-color: var(--s-doing); background: var(--s-doing-tint); }
+.p-blocked { color: var(--s-blocked); border-color: var(--s-blocked); background: var(--s-blocked-tint); }
+.p-done { color: var(--s-done); border-color: var(--s-done); background: var(--s-done-tint); }
+.p-tasks.is-complete { color: var(--s-done); border-color: var(--s-done); background: var(--s-done-tint); }
 
-/* Colour classes drive both the strip and the body tint. */
-.c-slate { --c: var(--c-slate); --c-tint: var(--c-slate-tint); }
-.c-blue { --c: var(--c-blue); --c-tint: var(--c-blue-tint); }
-.c-teal { --c: var(--c-teal); --c-tint: var(--c-teal-tint); }
-.c-green { --c: var(--c-green); --c-tint: var(--c-green-tint); }
-.c-amber { --c: var(--c-amber); --c-tint: var(--c-amber-tint); }
-.c-red { --c: var(--c-red); --c-tint: var(--c-red-tint); }
-.c-purple { --c: var(--c-purple); --c-tint: var(--c-purple-tint); }
-.c-pink { --c: var(--c-pink); --c-tint: var(--c-pink-tint); }
+/* Wearing a category's class hands anything --c and the ink that reads on it. */
+.c-slate { --c: var(--c-slate); --c-ink: var(--c-slate-ink); }
+.c-blue { --c: var(--c-blue); --c-ink: var(--c-blue-ink); }
+.c-teal { --c: var(--c-teal); --c-ink: var(--c-teal-ink); }
+.c-green { --c: var(--c-green); --c-ink: var(--c-green-ink); }
+.c-amber { --c: var(--c-amber); --c-ink: var(--c-amber-ink); }
+.c-red { --c: var(--c-red); --c-ink: var(--c-red-ink); }
+.c-purple { --c: var(--c-purple); --c-ink: var(--c-purple-ink); }
+.c-pink { --c: var(--c-pink); --c-ink: var(--c-pink-ink); }
 
 .tcard.s-done .tcard-body { background: var(--surface-2); }
 .tcard.s-done .tcard-title { text-decoration: line-through; color: var(--text-faint); }
 .tcard.s-done { opacity: 0.72; }
-.tcard.s-blocked .tcard-body { background: var(--c-red-tint); }
+.tcard.s-blocked .tcard-body { background: var(--s-blocked-tint); }
 .tcard.s-doing .tcard-body { background: var(--c-tint); }
 
 /* ---------- drawer ---------- */
@@ -388,7 +391,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .field-row { display: flex; gap: 12px; }
 .field-row .field { flex: 1; }
 .field-label { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-faint); }
-.field-hint { font-size: 12px; color: var(--text-dim); }
 
 .field select, .field input[type='date'] {
   padding: 6px 8px;
@@ -414,23 +416,28 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .seg:last-child { border-right: 0; }
 .seg:hover { background: var(--surface-2); }
 .seg.is-on { background: var(--accent); color: var(--head-ink); font-weight: 600; }
-.seg.is-on.p-doing { background: var(--c-blue); }
-.seg.is-on.p-blocked { background: var(--c-red); }
-.seg.is-on.p-done { background: var(--c-green); }
-.seg.is-on.p-todo { background: var(--c-slate); }
+.seg.is-on.p-doing { background: var(--s-doing); }
+.seg.is-on.p-blocked { background: var(--s-blocked); }
+.seg.is-on.p-done { background: var(--s-done); }
+.seg.is-on.p-todo { background: var(--s-todo); }
 
-.swatches { display: flex; gap: 7px; flex-wrap: wrap; }
+/* The category picker: a named list, with the colour alongside rather than
+   instead of the name. */
+.picker { position: relative; display: block; }
 
-.swatch {
-  width: 24px; height: 24px;
-  border-radius: 6px;
-  border: 2px solid transparent;
+.picker-dot {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 11px; height: 11px;
+  border-radius: 3px;
   background: var(--c);
-  cursor: pointer;
-  padding: 0;
+  pointer-events: none;
 }
 
-.swatch.is-on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--c); }
+/* Beats `.field select` on specificity, so the dot gets its own gutter. */
+.field .picker-select { width: 100%; padding-left: 27px; }
 
 .quick-days { display: flex; gap: 6px; }
 .quick-days .ghost { flex: 1; }
@@ -516,13 +523,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sync-badge:hover { background: var(--surface-2); color: var(--text); }
 
 .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); flex: none; }
-.sync-badge.is-idle .sync-dot { background: var(--c-green); }
-.sync-badge.is-saving .sync-dot { background: var(--c-blue); animation: sync-pulse 1s ease-in-out infinite; }
-.sync-badge.is-offline .sync-dot { background: var(--c-amber); }
+.sync-badge.is-idle .sync-dot { background: var(--s-done); }
+.sync-badge.is-saving .sync-dot { background: var(--s-doing); animation: sync-pulse 1s ease-in-out infinite; }
+.sync-badge.is-offline .sync-dot { background: var(--warn); }
 .sync-badge.is-conflict .sync-dot,
 .sync-badge.is-unauthorised .sync-dot,
 .sync-badge.is-signed-out .sync-dot,
-.sync-badge.is-unconfigured .sync-dot { background: var(--c-red); }
+.sync-badge.is-unconfigured .sync-dot { background: var(--s-blocked); }
 .sync-badge.is-conflict, .sync-badge.is-unauthorised, .sync-badge.is-signed-out, .sync-badge.is-unconfigured { color: var(--danger); border-color: var(--danger); }
 
 @keyframes sync-pulse { 50% { opacity: 0.3; } }
@@ -562,14 +569,141 @@ button, input, select, textarea { font: inherit; color: inherit; }
   gap: 12px;
   flex-wrap: wrap;
   padding: 9px 16px;
-  background: var(--c-amber-tint);
-  border-bottom: 1px solid var(--c-amber);
+  background: var(--warn-tint);
+  border-bottom: 1px solid var(--warn);
   color: var(--text);
   font-size: 13px;
 }
 
 .conflict-actions { margin-left: auto; display: flex; gap: 6px; }
 .conflict-actions .ghost { background: var(--surface); }
+
+/* ---------- settings ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(8, 12, 18, 0.45);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: min(84vh, 760px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.modal-title { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.modal-head .ghost { margin-left: auto; padding: 4px 8px; }
+
+.modal-body { padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 22px; }
+
+.settings-section { display: flex; flex-direction: column; gap: 8px; }
+.settings-head { display: flex; align-items: center; gap: 8px; }
+.settings-head .ghost { margin-left: auto; padding: 3px 8px; font-size: 12px; }
+.settings-head .settings-title { margin: 0; }
+
+.settings-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.settings-note { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
+
+.cat-list { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+
+/* The row wears its own colour down the left, so the list reads as the legend
+   it is rather than as eight text boxes. */
+.cat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-left: 4px solid var(--c);
+  border-radius: 7px;
+}
+
+.cat-colour {
+  flex: none;
+  width: 32px; height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+}
+
+.cat-colour::-webkit-color-swatch-wrapper { padding: 2px; }
+.cat-colour::-webkit-color-swatch { border: 0; border-radius: 3px; }
+.cat-colour::-moz-color-swatch { border: 0; border-radius: 3px; }
+
+.cat-label {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.cat-label:focus-visible, .settings-number:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.cat-count {
+  flex: none;
+  min-width: 22px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.settings-row:last-child { border-bottom: 0; }
+.settings-row > span { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.settings-hint { font-size: 12px; color: var(--text-faint); }
+.settings-row input[type='checkbox'] { width: 17px; height: 17px; accent-color: var(--accent); }
+
+.settings-number {
+  width: 66px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.settings-actions { display: flex; gap: 8px; }
+.settings-actions .ghost { flex: 1; }
 
 /* ---------- narrow screens ---------- */
 
@@ -601,9 +735,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
     scroll-snap-align: center;
   }
 
-  /* Defaults are fine on a phone, and backups belong on the desktop; on a
-     screen this small every hidden control is a row of board you get back. */
-  .toggle, .capacity, .brand-name, .desktop-only { display: none; }
+  /* Every control hidden here is a row of board you get back; the ones that
+     matter are all a tap away behind the gear. */
+  .brand-name { display: none; }
 
   .topbar { gap: 8px; padding: 8px 12px; }
   .topbar-tools { gap: 6px; width: 100%; }
@@ -614,12 +748,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .sync-badge { padding: 5px 8px; }
   .sync-pop { width: min(280px, calc(100vw - 24px)); }
   .conflict { padding: 9px 12px; }
+  .modal-backdrop { padding: 0; align-items: flex-end; }
+  .modal { width: 100%; max-height: 92vh; border-radius: 12px 12px 0 0; border-bottom: 0; }
+  .modal-body { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
   .conflict-actions { margin-left: 0; width: 100%; }
   .conflict-actions .ghost { flex: 1; }
 
   /* Comfortable touch targets. */
   .lane-add, .ghost, .seg { min-height: 36px; }
-  .swatch { width: 30px; height: 30px; }
+  .cat-colour, .cat-label { min-height: 34px; }
 }
 
 /* Keep the board clear of the home indicator and notch. */

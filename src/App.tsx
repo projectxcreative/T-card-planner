@@ -20,11 +20,24 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import Lane from './components/Lane';
 import CardDrawer from './components/CardDrawer';
-import TopBar, { type Settings } from './components/TopBar';
+import TopBar from './components/TopBar';
+import SettingsDialog from './components/SettingsDialog';
 import { CardFace } from './components/TCard';
 import type { Action } from './store';
 import { cardsIn, laneOf, load, newCard, normalise, reducer, sameArrangement, save } from './store';
-import { BACKLOG, COLOUR_LABELS, STATUS_LABELS, type BoardState, type Card, type LaneId } from './types';
+import {
+  BACKLOG,
+  CATEGORY_IDS,
+  STATUS_LABELS,
+  categoryLabel,
+  type BoardState,
+  type Card,
+  type Category,
+  type CategoryId,
+  type LaneId,
+  type Settings,
+} from './types';
+import { CategoriesProvider, useCategoryColours } from './categories';
 import {
   addDays,
   formatDayName,
@@ -74,6 +87,7 @@ export default function App() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
   const [past, setPast] = useState<BoardState[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -95,6 +109,8 @@ export default function App() {
     const timer = setTimeout(() => save(board), 200);
     return () => clearTimeout(timer);
   }, [board]);
+
+  useCategoryColours(board.categories);
 
   // localStorage stays the local copy of record; the Worker keeps devices level.
   const adoptRemote = useCallback((state: BoardState) => dispatch({ type: 'replace', state }), []);
@@ -127,7 +143,7 @@ export default function App() {
       const haystack = [
         card.title,
         summarise(card.description).excerpt,
-        COLOUR_LABELS[card.colour],
+        categoryLabel(board.categories, card.colour),
         STATUS_LABELS[card.status],
       ]
         .join(' ')
@@ -135,7 +151,13 @@ export default function App() {
       if (haystack.includes(needle)) found.add(card.id);
     }
     return found;
-  }, [query, board.cards]);
+  }, [query, board.cards, board.categories]);
+
+  const categoryCounts = useMemo(() => {
+    const counts = Object.fromEntries(CATEGORY_IDS.map((id) => [id, 0])) as Record<CategoryId, number>;
+    for (const card of Object.values(board.cards)) counts[card.colour] = (counts[card.colour] ?? 0) + 1;
+    return counts;
+  }, [board.cards]);
 
   const overdue = useMemo(() => {
     const lanes = Object.keys(board.lanes).filter((lane) => DAY_KEY.test(lane) && isPast(lane)).sort();
@@ -169,6 +191,17 @@ export default function App() {
     dispatch({ type: 'add', lane, card });
     setOpenId(card.id);
   }, []);
+
+  const setCategory = useCallback(
+    (id: CategoryId, patch: Partial<Category>) => dispatch({ type: 'category', id, patch }),
+    [],
+  );
+
+  const resetCategories = useCallback(() => {
+    if (!window.confirm('Put every category label and colour back to the defaults?')) return;
+    snapshot();
+    dispatch({ type: 'resetCategories' });
+  }, [snapshot]);
 
   const rollOver = useCallback(() => {
     if (overdue.count === 0) return;
@@ -215,9 +248,14 @@ export default function App() {
 
       if (event.key === 'Escape') {
         if (typing) return;
-        setOpenId(null);
+        // The dialog handles its own Escape; this catches the case where focus
+        // has wandered off it, so the key still means "close the top thing".
+        if (showSettings) setShowSettings(false);
+        else setOpenId(null);
         return;
       }
+      // The dialog is modal: its own shortcuts only, until it closes.
+      if (showSettings) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !typing) {
         event.preventDefault();
         undo();
@@ -236,7 +274,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [addAndOpen, days, undo]);
+  }, [addAndOpen, days, showSettings, undo]);
 
   /* ---------- drag and drop ---------- */
 
@@ -327,89 +365,103 @@ export default function App() {
   /* ---------- render ---------- */
 
   return (
-    <div className={openCard ? 'app has-drawer' : 'app'}>
-      <TopBar
-        weekKeys={days}
-        onShiftWeek={(weeks) => setAnchor((current) => addDays(current, weeks * 7))}
-        onToday={() => setAnchor(startOfWeek(todayKey()))}
-        query={query}
-        onQuery={setQuery}
-        settings={settings}
-        onSettings={(patch) => setSettings((current) => ({ ...current, ...patch }))}
-        overdueCount={overdue.count}
-        onRollOver={rollOver}
-        canUndo={past.length > 0}
-        onUndo={undo}
-        onExport={exportBoard}
-        onImport={importBoard}
-        searchRef={searchRef}
-        sync={sync}
-      />
+    <CategoriesProvider value={board.categories}>
+      <div className={openCard ? 'app has-drawer' : 'app'}>
+        <TopBar
+          weekKeys={days}
+          onShiftWeek={(weeks) => setAnchor((current) => addDays(current, weeks * 7))}
+          onToday={() => setAnchor(startOfWeek(todayKey()))}
+          query={query}
+          onQuery={setQuery}
+          settings={settings}
+          onSettings={(patch) => setSettings((current) => ({ ...current, ...patch }))}
+          onOpenSettings={() => setShowSettings(true)}
+          overdueCount={overdue.count}
+          onRollOver={rollOver}
+          canUndo={past.length > 0}
+          onUndo={undo}
+          searchRef={searchRef}
+          sync={sync}
+        />
 
-      <ConflictBar sync={sync} />
+        <ConflictBar sync={sync} />
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={collisionDetection}
-        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
-        onDragStart={onDragStart}
-        onDragOver={onDragOver}
-        onDragEnd={onDragEnd}
-        onDragCancel={() => endDrag(true)}
-      >
-        <main className="board" ref={boardRef}>
-          <Lane
-            id={BACKLOG}
-            title="Backlog"
-            subtitle="Unscheduled"
-            cards={cardsIn(board, BACKLOG)}
-            matches={matches}
-            isBacklog
-            capacity={settings.capacity}
-            onOpen={setOpenId}
-            onQuickAdd={quickAdd}
-          />
-
-          {days.map((day) => (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={collisionDetection}
+          measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+          onDragStart={onDragStart}
+          onDragOver={onDragOver}
+          onDragEnd={onDragEnd}
+          onDragCancel={() => endDrag(true)}
+        >
+          <main className="board" ref={boardRef}>
             <Lane
-              key={day}
-              id={day}
-              title={formatDayName(day)}
-              subtitle={isToday(day) ? `${formatDayNumber(day)} · today` : formatDayNumber(day)}
-              cards={cardsIn(board, day)}
+              id={BACKLOG}
+              title="Backlog"
+              subtitle="Unscheduled"
+              cards={cardsIn(board, BACKLOG)}
               matches={matches}
-              isToday={isToday(day)}
-              isPast={isPast(day)}
-              isWeekend={isWeekend(day)}
+              isBacklog
               capacity={settings.capacity}
               onOpen={setOpenId}
               onQuickAdd={quickAdd}
             />
-          ))}
-        </main>
 
-        <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }}>
-          {activeCard ? <CardFace card={activeCard} dragging /> : null}
-        </DragOverlay>
-      </DndContext>
+            {days.map((day) => (
+              <Lane
+                key={day}
+                id={day}
+                title={formatDayName(day)}
+                subtitle={isToday(day) ? `${formatDayNumber(day)} · today` : formatDayNumber(day)}
+                cards={cardsIn(board, day)}
+                matches={matches}
+                isToday={isToday(day)}
+                isPast={isPast(day)}
+                isWeekend={isWeekend(day)}
+                capacity={settings.capacity}
+                onOpen={setOpenId}
+                onQuickAdd={quickAdd}
+              />
+            ))}
+          </main>
 
-      {openCard && (
-        <CardDrawer
-          key={openCard.id}
-          card={openCard}
-          lane={openLane}
-          onPatch={patchCard}
-          onMove={moveCard}
-          onDuplicate={(id) => dispatch({ type: 'duplicate', id })}
-          onDelete={(id) => {
-            snapshot();
-            dispatch({ type: 'delete', id });
-            setOpenId(null);
-          }}
-          onClose={() => setOpenId(null)}
-        />
-      )}
+          <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }}>
+            {activeCard ? <CardFace card={activeCard} dragging /> : null}
+          </DragOverlay>
+        </DndContext>
 
-    </div>
+        {openCard && (
+          <CardDrawer
+            key={openCard.id}
+            card={openCard}
+            lane={openLane}
+            onPatch={patchCard}
+            onMove={moveCard}
+            onDuplicate={(id) => dispatch({ type: 'duplicate', id })}
+            onDelete={(id) => {
+              snapshot();
+              dispatch({ type: 'delete', id });
+              setOpenId(null);
+            }}
+            onClose={() => setOpenId(null)}
+          />
+        )}
+
+        {showSettings && (
+          <SettingsDialog
+            categories={board.categories}
+            counts={categoryCounts}
+            onCategory={setCategory}
+            onResetCategories={resetCategories}
+            settings={settings}
+            onSettings={(patch) => setSettings((current) => ({ ...current, ...patch }))}
+            onExport={exportBoard}
+            onImport={importBoard}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
+      </div>
+    </CategoriesProvider>
   );
 }

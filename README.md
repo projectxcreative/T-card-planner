@@ -35,7 +35,7 @@ Access session to present, every request is turned away, which is the point.
 
 **The board.** One column per weekday for the week you're looking at, plus a
 **Backlog** column on the left for anything not yet given a day. Weekends are
-hidden until you tick *Weekend*. Today's column is outlined.
+hidden until you turn them on in Settings. Today's column is outlined.
 
 **The cards.** Each card is a T-card: a coloured strip across the top naming its
 category, and the body below. Colour is the category (client work, meetings,
@@ -49,11 +49,38 @@ admin, urgent…), and it's the thing you read the board by from across the room
 
 - **Status** is the kanban part — To do, In progress, Blocked, Done. Done cards
   grey out and stop counting toward the day's load.
+- **Category** is a named list rather than a row of swatches, so picking one
+  doesn't mean remembering what teal stood for.
 - **Size** is a rough hour estimate. Each day's bar fills as you plan it and
-  turns red past the hours-per-day you set in the toolbar, so an over-committed
+  turns red past the hours-per-day you set in Settings, so an over-committed
   Tuesday is visible before you get to it.
 - **Roll over** appears when past days still hold unfinished cards, and moves
   them all to today in one go.
+
+## Settings
+
+![The settings panel](docs/settings.png)
+
+Behind the gear, and it holds three things.
+
+**Categories.** Eight of them, one per colour, and both halves are yours: the
+name on the strip and the colour behind it. Cards store the category rather
+than the words, so a rename reaches every card that already carries it —
+including the ones in past weeks. Pick a colour and the board works out the
+rest of it: the tint the card body takes when a card is in progress, a lifted
+version for dark theme, and black or white lettering depending on which one
+you can actually read against your colour.
+
+Categories travel with the board, so a rename made on the laptop is there on
+the phone after the next sync. Statuses are the app's own and stay put: a
+*Blocked* pill is red whatever you do to the red category.
+
+**The week.** Whether Saturday and Sunday get columns, how many hours you
+count as a full day, and the theme.
+
+**Backup.** Export writes the whole board — cards, days and categories — to a
+JSON file; import replaces what's there, after asking. Both work on a phone,
+which is where the old toolbar buttons couldn't go.
 
 ## Keyboard
 
@@ -61,7 +88,7 @@ admin, urgent…), and it's the thing you read the board by from across the room
 | --- | --- |
 | `N` | New card on today, opened for editing |
 | `/` | Focus search |
-| `Esc` | Close the card panel, or cancel a drag |
+| `Esc` | Close the card panel or settings, or cancel a drag |
 | `⌘Z` / `Ctrl+Z` | Undo the last move, delete or roll-over |
 | `Enter` | Open the focused card |
 
@@ -222,10 +249,13 @@ src/
   sync.ts              pull/push, offline queueing, conflict detection, session
   store.ts             reducer, persistence, import normalisation
   dates.ts             local-time day keys (YYYY-MM-DD) and formatting
-  types.ts             Card, statuses, categories
+  types.ts             Card, statuses, categories, view settings
+  categories.tsx       the category context, and their colours as CSS vars
+  colour.ts            one chosen hex -> dark-theme twin and readable ink
   cardText.ts          card-face summary of the rich text
   components/
-    TopBar.tsx         week nav, search, settings, export/import
+    TopBar.tsx         week nav, search, theme, the way into settings
+    SettingsDialog.tsx category labels and colours, the week, backups
     Lane.tsx           a day (or the backlog), quick add, load bar
     TCard.tsx          the card face and its sortable wrapper
     CardDrawer.tsx     the editing panel
@@ -240,6 +270,12 @@ on and where it sits in that day.
 
 Mouse and touch use separate dnd-kit sensors: a mouse drags after 5px of
 movement, a finger after a short press, so a swipe still scrolls the board.
+
+Category colours reach the CSS as custom properties written into the document
+from the board's own settings, so everything downstream goes on naming
+`--c-blue` without caring who chose it. The app's own status colours are
+separate tokens (`--s-blocked` and friends) held in the stylesheet, which is
+what keeps a recoloured category out of the pills and the load bar.
 
 Built with React, Vite, [dnd-kit](https://dndkit.com),
 [Tiptap](https://tiptap.dev) and Cloudflare Workers + KV.

@@ -1,4 +1,18 @@
-import { BACKLOG, type BoardState, type Card, type Colour, type LaneId, type Status } from './types';
+import {
+  BACKLOG,
+  CATEGORY_IDS,
+  DEFAULT_CATEGORIES,
+  LABEL_MAX,
+  defaultCategories,
+  type BoardState,
+  type Card,
+  type Categories,
+  type Category,
+  type CategoryId,
+  type LaneId,
+  type Status,
+} from './types';
+import { isHexColour } from './colour';
 import { addDays, todayKey } from './dates';
 
 const STORAGE_KEY = 'tcard-planner.board.v1';
@@ -9,7 +23,7 @@ export function uid(): string {
 }
 
 export function emptyBoard(): BoardState {
-  return { version: VERSION, cards: {}, lanes: {} };
+  return { version: VERSION, cards: {}, lanes: {}, categories: defaultCategories() };
 }
 
 export function newCard(title: string, patch: Partial<Card> = {}): Card {
@@ -34,6 +48,8 @@ export type Action =
   | { type: 'duplicate'; id: string }
   | { type: 'move'; id: string; lane: LaneId; index?: number }
   | { type: 'rollOver'; from: LaneId[]; to: LaneId }
+  | { type: 'category'; id: CategoryId; patch: Partial<Category> }
+  | { type: 'resetCategories' }
   | { type: 'replace'; state: BoardState };
 
 export function laneOf(state: BoardState, cardId: string): LaneId | undefined {
@@ -140,6 +156,18 @@ export function reducer(state: BoardState, action: Action): BoardState {
       return moving.length > 0 ? { ...state, lanes } : state;
     }
 
+    case 'category': {
+      const current = state.categories[action.id];
+      if (!current) return state;
+      return {
+        ...state,
+        categories: { ...state.categories, [action.id]: { ...current, ...action.patch } },
+      };
+    }
+
+    case 'resetCategories':
+      return { ...state, categories: defaultCategories() };
+
     case 'replace':
       return action.state;
 
@@ -155,6 +183,22 @@ function isCard(value: unknown): value is Card {
   return !!c && typeof c.id === 'string' && typeof c.title === 'string';
 }
 
+/** Categories are eight fixed slots, so a board written by an older version —
+ *  or edited by hand — is filled in from the defaults rather than rejected. */
+function normaliseCategories(input: unknown): Categories {
+  const raw = (input ?? {}) as Partial<Record<CategoryId, Partial<Category>>>;
+  const categories = {} as Categories;
+  for (const id of CATEGORY_IDS) {
+    const value = typeof raw[id] === 'object' && raw[id] ? raw[id] : {};
+    const label = typeof value.label === 'string' ? value.label.trim().slice(0, LABEL_MAX) : '';
+    categories[id] = {
+      label: label || DEFAULT_CATEGORIES[id].label,
+      colour: isHexColour(value.colour) ? value.colour.toLowerCase() : DEFAULT_CATEGORIES[id].colour,
+    };
+  }
+  return categories;
+}
+
 /** Tolerant of hand-edited or partial files — anything unrecognised is dropped
  *  rather than throwing away the whole board. */
 export function normalise(input: unknown): BoardState {
@@ -167,7 +211,7 @@ export function normalise(input: unknown): BoardState {
     cards[id] = {
       ...value,
       description: typeof value.description === 'string' ? value.description : '',
-      colour: (value.colour ?? 'slate') as Colour,
+      colour: CATEGORY_IDS.includes(value.colour as CategoryId) ? (value.colour as CategoryId) : 'slate',
       status: (value.status ?? 'todo') as Status,
       estimate: Number.isFinite(value.estimate) ? Number(value.estimate) : 0,
       createdAt: value.createdAt ?? new Date().toISOString(),
@@ -187,7 +231,7 @@ export function normalise(input: unknown): BoardState {
   const orphans = Object.keys(cards).filter((id) => !seen.has(id));
   if (orphans.length > 0) lanes[BACKLOG] = [...(lanes[BACKLOG] ?? []), ...orphans];
 
-  return { version: VERSION, cards, lanes };
+  return { version: VERSION, cards, lanes, categories: normaliseCategories(raw.categories) };
 }
 
 export function load(): BoardState {
@@ -245,6 +289,7 @@ function seedBoard(): BoardState {
   ];
   return {
     version: VERSION,
+    categories: defaultCategories(),
     cards: Object.fromEntries(cards.map((c) => [c.id, c])),
     lanes: {
       [today]: [cards[0].id, cards[1].id],
