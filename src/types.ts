@@ -70,6 +70,61 @@ export const CLIENT_PALETTE = [
 
 /* ---------- projects ---------- */
 
+/** Where a project sits, from the first email to the money landing. Ordered:
+ *  the list reads top to bottom as the pipeline, so this array is the order. */
+export const PROJECT_STAGES = [
+  'enquiry',
+  'quoted',
+  'won',
+  'active',
+  'delivered',
+  'invoiced',
+  'paid',
+  'lost',
+] as const;
+export type ProjectStage = (typeof PROJECT_STAGES)[number];
+
+export const STAGE_LABELS: Record<ProjectStage, string> = {
+  enquiry: 'Enquiry',
+  quoted: 'Quoted',
+  won: 'Won',
+  active: 'In progress',
+  delivered: 'Delivered',
+  invoiced: 'Invoiced',
+  paid: 'Paid',
+  lost: 'Closed lost',
+};
+
+/**
+ * What a stage means for the money, which is not the same as where it sits in
+ * the pipeline. Two stages can be miles apart in the process and count the same
+ * way in a total — "won" and "delivered" are both work you are committed to and
+ * have not billed for.
+ */
+export type StageGroup = 'prospect' | 'committed' | 'owed' | 'banked' | 'lost';
+
+export const STAGE_GROUP: Record<ProjectStage, StageGroup> = {
+  enquiry: 'prospect',
+  quoted: 'prospect',
+  won: 'committed',
+  active: 'committed',
+  delivered: 'committed',
+  invoiced: 'owed',
+  paid: 'banked',
+  lost: 'lost',
+};
+
+export const STAGE_GROUP_LABELS: Record<StageGroup, string> = {
+  prospect: 'Pipeline',
+  committed: 'In hand',
+  owed: 'Invoiced',
+  banked: 'Paid',
+  lost: 'Lost',
+};
+
+/** A lost project is worth nothing and shouldn't swell any total. */
+export const isLost = (stage: ProjectStage) => stage === 'lost';
+
 /** A piece of billable work several cards belong to. The value is what the
  *  whole thing is worth, in whole pounds — enough to see what a week of cards
  *  is actually earning, without turning the planner into an invoicing tool. */
@@ -80,8 +135,11 @@ export interface Project {
   description: string;
   /** Pounds. 0 means "not valued", which is different from "worth nothing". */
   value: number;
-  /** Client ids. */
-  clients: string[];
+  /** Where it is in the pipeline. */
+  stage: ProjectStage;
+  /** The client it is for. One, not a list: a project belongs to whoever is
+   *  paying for it, and two payers is a different kind of thing entirely. */
+  clientId: string | null;
   /** Cards created inside a project start with this category. */
   colour: CategoryId;
   /** Archived projects drop out of the pickers but keep their cards. */

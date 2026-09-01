@@ -5,6 +5,8 @@ import {
   CLIENT_PALETTE,
   DEFAULT_CATEGORIES,
   LABEL_MAX,
+  PROJECT_STAGES,
+  isLost,
   defaultCategories,
   type BoardState,
   type Card,
@@ -14,6 +16,7 @@ import {
   type Client,
   type LaneId,
   type Project,
+  type ProjectStage,
   type Status,
 } from './types';
 import { isHexColour } from './colour';
@@ -66,7 +69,8 @@ export function newProject(title: string, patch: Partial<Project> = {}): Project
     title,
     description: '',
     value: 0,
-    clients: [],
+    stage: 'enquiry',
+    clientId: null,
     colour: 'blue',
     archived: false,
     createdAt: now,
@@ -134,8 +138,18 @@ export function cardsOfProject(state: BoardState, projectId: string): { card: Ca
 
 export function projectsOfClient(state: BoardState, clientId: string): Project[] {
   return Object.values(state.projects)
-    .filter((project) => project.clients.includes(clientId))
-    .sort((a, b) => Number(a.archived) - Number(b.archived) || a.title.localeCompare(b.title));
+    .filter((project) => project.clientId === clientId)
+    .sort(byStage);
+}
+
+/** Pipeline order, so a list of projects reads as a funnel. Archived ones sink
+ *  regardless of where they got to. */
+export function byStage(a: Project, b: Project): number {
+  return (
+    Number(a.archived) - Number(b.archived) ||
+    PROJECT_STAGES.indexOf(a.stage) - PROJECT_STAGES.indexOf(b.stage) ||
+    a.title.localeCompare(b.title)
+  );
 }
 
 /**
@@ -163,7 +177,10 @@ export function clientTotals(
   const projects = projectsOfClient(state, clientId);
   const cards = cardsOfClient(state, clientId);
   return {
-    value: projects.filter((project) => !project.archived).reduce((sum, project) => sum + project.value, 0),
+    // A lost project is worth nothing; counting it would overstate the client.
+    value: projects
+      .filter((project) => !project.archived && !isLost(project.stage))
+      .reduce((sum, project) => sum + project.value, 0),
     projects: projects.length,
     cards: cards.length,
     done: cards.filter(({ card }) => card.status === 'done').length,
@@ -354,8 +371,7 @@ export function reducer(state: BoardState, action: Action): BoardState {
       }
       const projects: Record<string, Project> = {};
       for (const [id, project] of Object.entries(state.projects)) {
-        const kept = drop(project.clients);
-        projects[id] = kept === project.clients ? project : { ...project, clients: kept };
+        projects[id] = project.clientId === action.id ? { ...project, clientId: null } : project;
       }
       return { ...state, clients, clientOrder: state.clientOrder.filter((x) => x !== action.id), cards, projects };
     }
@@ -411,6 +427,18 @@ function normaliseClients(input: unknown, order: unknown): Pick<BoardState, 'cli
   return { clients, clientOrder: [...listed, ...Object.keys(clients).filter((id) => !seen.has(id))] };
 }
 
+/** A project used to carry a list of clients. One of them is the client now —
+ *  the first that still exists — so a board written before this reads back with
+ *  its client intact rather than losing it. */
+function oneClient(value: Partial<Project> & { clients?: unknown }, clients: Record<string, Client>): string | null {
+  if (typeof value.clientId === 'string' && clients[value.clientId]) return value.clientId;
+  if (Array.isArray(value.clients)) {
+    const first = value.clients.find((c): c is string => typeof c === 'string' && !!clients[c]);
+    if (first) return first;
+  }
+  return null;
+}
+
 function normaliseProjects(input: unknown, clients: Record<string, Client>): Record<string, Project> {
   const raw = (input ?? {}) as Record<string, Partial<Project>>;
   const projects: Record<string, Project> = {};
@@ -422,7 +450,9 @@ function normaliseProjects(input: unknown, clients: Record<string, Client>): Rec
       title: value.title,
       description: typeof value.description === 'string' ? value.description : '',
       value: Number.isFinite(value.value) ? Math.max(0, Number(value.value)) : 0,
-      clients: Array.isArray(value.clients) ? value.clients.filter((c): c is string => typeof c === 'string' && !!clients[c]) : [],
+      // Projects that predate the pipeline are work you already have on.
+      stage: PROJECT_STAGES.includes(value.stage as ProjectStage) ? (value.stage as ProjectStage) : 'active',
+      clientId: oneClient(value, clients),
       colour: CATEGORY_IDS.includes(value.colour as CategoryId) ? (value.colour as CategoryId) : 'blue',
       archived: value.archived === true,
       createdAt: value.createdAt ?? now,
@@ -536,7 +566,8 @@ function seedBoard(): BoardState {
   const project = newProject('Acme website refresh', {
     id: `${SEED_PREFIX}project`,
     value: 4500,
-    clients: [client.id],
+    stage: 'active',
+    clientId: client.id,
     colour: 'blue',
     description: '<p>Projects group cards, carry a value, and can be tagged with the clients they are for.</p>',
   });

@@ -83,16 +83,41 @@ cards than fit says how many more.
 ![A project](docs/projects.png)
 
 A project is a piece of work several cards belong to: a title, a rich text
-description, a **value in pounds**, a category, and the clients it's for. The
-list down the left totals what's open.
+description, a **value in pounds**, a category, a **stage**, and the client it's
+for. One client, not a list — a project belongs to whoever is paying for it.
+
+**The pipeline.** Every project sits at a stage, and the list is ordered by
+them, so it reads top to bottom as a funnel with a heading at each step:
+
+| Stage | Counts as |
+| --- | --- |
+| Enquiry | Pipeline |
+| Quoted | Pipeline |
+| Won | In hand |
+| In progress | In hand |
+| Delivered | In hand |
+| Invoiced | Invoiced |
+| Paid | Paid |
+| Closed lost | nothing |
+
+The four totals above the list are those groups added up. They're grouped by
+what a stage means for the money rather than by how far along it is — *Won* and
+*Delivered* are miles apart in the process and identical in the ledger, both
+being work you're committed to and haven't billed for. A lost project is worth
+nothing and swells no total. Archived projects are out of the count entirely:
+putting one away is saying you've stopped counting it.
 
 - Assign an existing card to a project from the card panel's **Project** box.
 - Or add one from inside the project, with the day it lands on set beside the
-  box — it inherits the project's category and client tags.
+  box — it inherits the project's category and its client.
 - Every card on the project is listed with its day, and the day can be changed
   from there without leaving the view.
-- **Archive** takes a finished project out of the card pickers but keeps it.
-  **Delete** removes the project; its cards stay on the board, just without one.
+- **Archive** takes a finished project out of the card pickers and the totals
+  but keeps it. **Delete** removes the project; its cards stay on the board,
+  just without one.
+
+Stages are the app's own and fixed, like card statuses — it's the categories and
+clients that are yours to name.
 
 ### Clients
 
@@ -101,13 +126,14 @@ list down the left totals what's open.
 The same shape as Projects, from the other direction: pick a client and see
 what you're doing for them.
 
-- **Value** is their open projects added up; **Still to do** and **Logged** are
-  the hours on their cards.
+- **Value** is their open projects added up, lost ones excluded; **Still to do**
+  and **Logged** are the hours on their cards.
 - **Their cards** means cards tagged with them *and* every card on their
   projects. That second half matters: a card created inside a project inherits
-  its client tags, but one assigned to the project later doesn't — and either
-  way, a card on an Acme project is Acme's work. Counting only the tagged ones
-  would quietly under-report what a client is costing you.
+  its client, but one assigned to the project later doesn't — and either way, a
+  card on an Acme project is Acme's work. Counting only the tagged ones would
+  quietly under-report what a client is costing you.
+- Each of their projects shows the stage it's at, and clicking one opens it.
 - Add, rename, recolour and remove clients here as well as in Settings, and
   click one of their projects to jump straight to it.
 
@@ -149,8 +175,9 @@ and it's the thing you read the board by from across the room.
   many are down there and how long they took, so the top of a column is what's
   left and the bottom is what you did. Done cards stop counting toward the day's
   load and start counting toward the hours logged on it.
-- **Clients** are tags for who the work is for, and a card can wear several.
-  They're separate from the category, which is what *kind* of work it is.
+- **Clients** are tags for who the work is for, and a *card* can wear several —
+  a project has exactly one. They're separate from the category, which is what
+  *kind* of work it is.
 - **Category** is a named list rather than a row of swatches, so picking one
   doesn't mean remembering what teal stood for.
 - **Size** is a rough hour estimate. Each day's bar fills as you plan it and
@@ -423,7 +450,7 @@ src/
   store.ts             reducer, persistence, import normalisation
   m365.ts              Entra sign-in (PKCE), reading the calendar, publishing
   dates.ts             local-time day keys (YYYY-MM-DD), months, times of day
-  types.ts             Card, Project, Client, statuses, categories, settings
+  types.ts             Card, Project, Client, statuses, stages, categories, settings
   categories.tsx       the category context, and their colours as CSS vars
   lookups.tsx          projects and clients, for the card face to name them
   colour.ts            one chosen hex -> dark-theme twin and readable ink

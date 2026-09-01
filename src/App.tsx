@@ -29,6 +29,7 @@ import ClientsView from './components/ClientsView';
 import { CardFace } from './components/TCard';
 import type { Action } from './store';
 import {
+  byStage,
   cardsIn,
   cardsOfClient,
   cardsOfProject,
@@ -228,7 +229,9 @@ export default function App() {
   const clientCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const card of Object.values(board.cards)) for (const id of card.clients) counts[id] = (counts[id] ?? 0) + 1;
-    for (const project of Object.values(board.projects)) for (const id of project.clients) counts[id] = (counts[id] ?? 0) + 1;
+    for (const project of Object.values(board.projects)) {
+      if (project.clientId) counts[project.clientId] = (counts[project.clientId] ?? 0) + 1;
+    }
     return counts;
   }, [board.cards, board.projects]);
 
@@ -237,13 +240,9 @@ export default function App() {
     [board.clientOrder, board.clients],
   );
 
-  const projectList = useMemo(
-    () =>
-      Object.values(board.projects).sort(
-        (a, b) => Number(a.archived) - Number(b.archived) || a.title.localeCompare(b.title),
-      ),
-    [board.projects],
-  );
+  // Pipeline order, so the list reads as a funnel and the stage headings drawn
+  // down it land on runs rather than on every other row.
+  const projectList = useMemo(() => Object.values(board.projects).sort(byStage), [board.projects]);
 
   const overdue = useMemo(() => {
     const lanes = Object.keys(board.lanes).filter((lane) => DAY_KEY.test(lane) && isPast(lane)).sort();
@@ -381,7 +380,9 @@ export default function App() {
       const card = newCard(title, {
         projectId,
         colour: project?.colour ?? settings.defaultCategory,
-        clients: project ? [...project.clients] : [],
+        // A card can still wear several clients; it just starts with its
+        // project's one, which is the answer nearly every time.
+        clients: project?.clientId ? [project.clientId] : [],
       });
       dispatch({ type: 'add', lane: day, card });
     },

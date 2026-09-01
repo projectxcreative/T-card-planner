@@ -1456,3 +1456,60 @@ button, input, select, textarea { font: inherit; color: inherit; }
      its own line instead of squeezing it down to a few characters. */
   .topbar-tools .search { flex: 1 1 150px; min-width: 150px; }
 }
+
+/* ---------- the project pipeline ---------- */
+
+/* Where a project has got to. Coloured by what the stage means for the money
+   rather than by how far along it is: "won" and "delivered" are miles apart in
+   the process and identical in the ledger. */
+.stage {
+  --stage: var(--s-todo);
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--stage) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--stage) 12%, var(--surface));
+  color: color-mix(in srgb, var(--stage) 78%, var(--text));
+  font-size: 10.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.s-stage-prospect { --stage: var(--s-todo); }
+.s-stage-committed { --stage: var(--s-doing); }
+.s-stage-owed { --stage: var(--warn); }
+.s-stage-banked { --stage: var(--s-done); }
+/* Lost is a fact, not a failure state — muted rather than red. */
+.s-stage-lost { --stage: var(--text-faint); }
+
+/* The dropdown wears the same colour, so the pipeline reads at a glance from
+   the detail panel as well as from the list. */
+.stage-select {
+  border-left: 4px solid var(--stage, var(--s-todo)) !important;
+  font-weight: 600;
+}
+
+.stage-select.s-stage-prospect { --stage: var(--s-todo); }
+.stage-select.s-stage-committed { --stage: var(--s-doing); }
+.stage-select.s-stage-owed { --stage: var(--warn); }
+.stage-select.s-stage-banked { --stage: var(--s-done); }
+.stage-select.s-stage-lost { --stage: var(--text-faint); }
+
+/* The stage a run of the list is in. The list is already in pipeline order, so
+   these headings are what turn it into a funnel rather than a list. */
+.split-group {
+  margin: 10px 2px 4px;
+  font-size: 10.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.split-items > li:first-child .split-group { margin-top: 0; }
+
+/* The money strip above the project list lives in a sidebar, so it is a fixed
+   2x2 — auto-fit gives it three across and a lonely fourth underneath. */
+.totals.is-tight { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.totals.is-tight li { padding: 6px 8px; }
+.totals.is-tight .totals-value { font-size: 13px; }

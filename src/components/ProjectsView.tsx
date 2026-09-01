@@ -1,6 +1,16 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import type { Card, CategoryId, LaneId, Project } from '../types';
-import { BACKLOG, CATEGORY_IDS, STATUS_LABELS, categoryLabel, formatMoney } from '../types';
+import type { Card, CategoryId, LaneId, Project, ProjectStage, StageGroup } from '../types';
+import {
+  BACKLOG,
+  CATEGORY_IDS,
+  PROJECT_STAGES,
+  STAGE_GROUP,
+  STAGE_GROUP_LABELS,
+  STAGE_LABELS,
+  STATUS_LABELS,
+  categoryLabel,
+  formatMoney,
+} from '../types';
 import { useCategories } from '../categories';
 import { useLookups } from '../lookups';
 import { formatEstimate } from '../cardText';
@@ -80,11 +90,23 @@ export default function ProjectsView(props: Props) {
   const [cardDay, setCardDay] = useState(todayKey());
 
   const active = selected ? projects.find((project) => project.id === selected) ?? null : null;
+  const activeClient = active?.clientId ? clients[active.clientId] : undefined;
   const cards = useMemo(() => (active ? cardsOf(active.id) : []), [active, cardsOf]);
 
   const done = cards.filter((entry) => entry.card.status === 'done').length;
   const hours = cards.reduce((sum, entry) => sum + entry.card.estimate, 0);
-  const totalValue = projects.filter((project) => !project.archived).reduce((sum, project) => sum + project.value, 0);
+
+  /** The pipeline, in money: what might come in, what is committed, what has
+   *  been billed and not paid, and what has landed. Archived projects are out
+   *  of it — putting one away is saying you have stopped counting it. */
+  const pipeline = useMemo(() => {
+    const sums = { prospect: 0, committed: 0, owed: 0, banked: 0, lost: 0 } as Record<StageGroup, number>;
+    for (const project of projects) {
+      if (project.archived) continue;
+      sums[STAGE_GROUP[project.stage]] += project.value;
+    }
+    return sums;
+  }, [projects]);
 
   const create = () => {
     const title = newTitle.trim();
@@ -98,10 +120,21 @@ export default function ProjectsView(props: Props) {
       <aside className="split-list">
         <header className="split-list-head">
           <h2 className="split-heading">Projects</h2>
-          <span className="split-total" title="Value of every project still open">
-            {formatMoney(totalValue)}
+          <span className="split-total" title="Won, delivered and invoiced — everything you are owed or committed to">
+            {formatMoney(pipeline.committed + pipeline.owed)}
           </span>
         </header>
+
+        <ul className="totals is-tight">
+          {(['prospect', 'committed', 'owed', 'banked'] as StageGroup[]).map((group) => (
+            <li key={group}>
+              <span className="totals-label">{STAGE_GROUP_LABELS[group]}</span>
+              <span className={group === 'banked' ? 'totals-value is-done' : 'totals-value'}>
+                {formatMoney(pipeline[group])}
+              </span>
+            </li>
+          ))}
+        </ul>
 
         <div className="split-new">
           <input
@@ -120,13 +153,24 @@ export default function ProjectsView(props: Props) {
 
         <ul className="split-items">
           {projects.length === 0 && <li className="split-empty">No projects yet.</li>}
-          {projects.map((project) => {
+          {projects.map((project, index) => {
             const own = cardsOf(project.id);
+            const client = project.clientId ? clients[project.clientId] : undefined;
             const classes = ['split-item', `c-${project.colour}`];
             if (project.id === selected) classes.push('is-on');
             if (project.archived) classes.push('is-archived');
+            // The list arrives in pipeline order, so a heading goes wherever the
+            // stage changes — which turns the list into the funnel itself.
+            const previous = projects[index - 1];
+            const heading =
+              !previous || previous.stage !== project.stage || previous.archived !== project.archived
+                ? project.archived
+                  ? 'Archived'
+                  : STAGE_LABELS[project.stage]
+                : null;
             return (
               <li key={project.id}>
+                {heading && <p className="split-group">{heading}</p>}
                 <button type="button" className={classes.join(' ')} onClick={() => onSelect(project.id)}>
                   <span className="split-item-title">{project.title || 'Untitled project'}</span>
                   <span className="split-item-meta">
@@ -134,11 +178,12 @@ export default function ProjectsView(props: Props) {
                     {project.archived ? ' · archived' : ''}
                   </span>
                   <span className="split-item-clients">
-                    {project.clients.map((id) => clients[id]).filter(Boolean).map((client) => (
-                      <span key={client.id} className="chip is-compact" style={{ '--chip': client.colour } as React.CSSProperties}>
+                    <span className={`stage s-stage-${STAGE_GROUP[project.stage]}`}>{STAGE_LABELS[project.stage]}</span>
+                    {client && (
+                      <span className="chip is-compact" style={{ '--chip': client.colour } as React.CSSProperties}>
                         {client.name}
                       </span>
-                    ))}
+                    )}
                   </span>
                 </button>
               </li>
@@ -152,8 +197,9 @@ export default function ProjectsView(props: Props) {
           <div className="split-blank">
             <h3>Pick a project</h3>
             <p>
-              A project gathers the cards for one piece of work, carries what it is worth, and can be tagged with the
-              clients it is for. Cards keep their own day, so a project is a plan rather than a second board.
+              A project gathers the cards for one piece of work, carries what it is worth and who it is for, and
+              moves down the pipeline from enquiry to paid. Cards keep their own day, so a project is a plan rather
+              than a second board.
             </p>
           </div>
         ) : (
@@ -191,6 +237,21 @@ export default function ProjectsView(props: Props) {
 
             <div className="split-detail-body">
               <div className="field-row">
+                <label className="field">
+                  <span className="field-label">Stage</span>
+                  <select
+                    className={`stage-select s-stage-${STAGE_GROUP[active.stage]}`}
+                    value={active.stage}
+                    onChange={(event) => onPatch(active.id, { stage: event.target.value as ProjectStage })}
+                  >
+                    {PROJECT_STAGES.map((stage) => (
+                      <option key={stage} value={stage}>
+                        {STAGE_LABELS[stage]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
                 <ValueField project={active} onPatch={onPatch} />
 
                 <label className="field">
@@ -212,35 +273,28 @@ export default function ProjectsView(props: Props) {
                 </label>
               </div>
 
-              <div className="field">
-                <span className="field-label">Clients</span>
+              <label className="field">
+                <span className="field-label">Client</span>
                 {clientOrder.length === 0 ? (
-                  <p className="field-note">No clients yet — add them under Settings › Clients.</p>
+                  <p className="field-note">No clients yet — add them in the Clients view, or under Settings.</p>
                 ) : (
-                  <div className="chip-picker">
-                    {clientOrder.map((id) => {
-                      const client = clients[id];
-                      const on = active.clients.includes(id);
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          className={on ? 'chip is-on' : 'chip'}
-                          style={{ '--chip': client.colour } as React.CSSProperties}
-                          aria-pressed={on}
-                          onClick={() =>
-                            onPatch(active.id, {
-                              clients: on ? active.clients.filter((x) => x !== id) : [...active.clients, id],
-                            })
-                          }
-                        >
-                          {client.name}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <span className="picker" style={activeClient ? ({ '--c': activeClient.colour } as React.CSSProperties) : undefined}>
+                    {activeClient && <span className="picker-dot" aria-hidden="true" />}
+                    <select
+                      className={activeClient ? 'picker-select' : undefined}
+                      value={active.clientId ?? ''}
+                      onChange={(event) => onPatch(active.id, { clientId: event.target.value || null })}
+                    >
+                      <option value="">No client</option>
+                      {clientOrder.map((id) => (
+                        <option key={id} value={id}>
+                          {clients[id].name}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
                 )}
-              </div>
+              </label>
 
               <div className="field">
                 <span className="field-label">Description</span>
