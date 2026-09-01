@@ -47,6 +47,75 @@ export function categoryLabel(categories: Categories, id: CategoryId): string {
   return categories[id]?.label.trim() || DEFAULT_CATEGORIES[id].label;
 }
 
+/* ---------- clients ---------- */
+
+/** A client is a tag with a name and a colour of its own. Unlike categories
+ *  there is no fixed set of them: you add the ones you bill, and a card or a
+ *  project can wear several at once. */
+export interface Client {
+  id: string;
+  name: string;
+  /** `#rrggbb`, used for the chip. */
+  colour: string;
+}
+
+export const CLIENT_NAME_MAX = 40;
+
+/** The colours a new client is offered, in order — enough that the first
+ *  handful are distinguishable without anyone reaching for the picker. */
+export const CLIENT_PALETTE = [
+  '#2f6df6', '#0b7f75', '#3f9142', '#a86a00',
+  '#d4453c', '#7c4ddb', '#cd4a8c', '#64748b',
+];
+
+/* ---------- projects ---------- */
+
+/** A piece of billable work several cards belong to. The value is what the
+ *  whole thing is worth, in whole pounds — enough to see what a week of cards
+ *  is actually earning, without turning the planner into an invoicing tool. */
+export interface Project {
+  id: string;
+  title: string;
+  /** Rich text, stored as HTML from the editor. */
+  description: string;
+  /** Pounds. 0 means "not valued", which is different from "worth nothing". */
+  value: number;
+  /** Client ids. */
+  clients: string[];
+  /** Cards created inside a project start with this category. */
+  colour: CategoryId;
+  /** Archived projects drop out of the pickers but keep their cards. */
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/* ---------- settings ---------- */
+
+/** Where a card opens: beside the board, or over it. */
+export type CardSurface = 'drawer' | 'modal';
+
+export const VIEWS = ['week', 'day', 'month', 'projects'] as const;
+export type ViewMode = (typeof VIEWS)[number];
+
+export const VIEW_LABELS: Record<ViewMode, string> = {
+  week: 'Week',
+  day: 'Day',
+  month: 'Month',
+  projects: 'Projects',
+};
+
+/** What the app needs to talk to a Microsoft 365 tenant. Both halves come off
+ *  an app registration in Entra ID; neither is a secret, which is why they can
+ *  live on the device — the sign-in itself is PKCE, so nothing here grants
+ *  access on its own. */
+export interface M365Config {
+  /** `common`, `organizations`, or your own tenant id / domain. */
+  tenant: string;
+  /** The app registration's Application (client) ID. */
+  clientId: string;
+}
+
 /** Per-device view preferences. Unlike categories these stay on the device:
  *  how many hours you plan into a day, and whether you want to see the
  *  weekend, is about the screen in front of you rather than about the board. */
@@ -54,7 +123,30 @@ export interface Settings {
   includeWeekend: boolean;
   capacity: number;
   theme: 'light' | 'dark';
+  /** The category a new card gets when nothing else decides. */
+  defaultCategory: CategoryId;
+  /** Show the description excerpt on the card face. */
+  showDescription: boolean;
+  cardSurface: CardSurface;
+  /** First and last hour drawn on the day view's timeline. */
+  dayStart: number;
+  dayEnd: number;
+  m365: M365Config;
 }
+
+export const DEFAULT_SETTINGS: Settings = {
+  includeWeekend: false,
+  capacity: 6,
+  theme: 'light',
+  defaultCategory: 'slate',
+  showDescription: true,
+  cardSurface: 'drawer',
+  dayStart: 8,
+  dayEnd: 19,
+  m365: { tenant: 'common', clientId: '' },
+};
+
+/* ---------- cards ---------- */
 
 export interface Card {
   id: string;
@@ -65,6 +157,20 @@ export interface Card {
   status: Status;
   /** Rough size in hours; drives the per-day load bar. 0 = unsized. */
   estimate: number;
+  /** Minutes from local midnight on its day, or null for "sometime today".
+   *  Set by dropping the card onto the day view's timeline. */
+  start: number | null;
+  /** The project this card belongs to, if any. */
+  projectId: string | null;
+  /** Client ids. A card can carry several, and needn't inherit its project's. */
+  clients: string[];
+  /** Mirror this card into the connected Microsoft 365 calendar. */
+  publish: boolean;
+  /** The Graph event id, once published. Null until the first push lands. */
+  eventId: string | null;
+  /** When the card was last marked done — what the day's "logged" total and
+   *  the look-back are counted from. */
+  completedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -82,4 +188,20 @@ export interface BoardState {
   /** Category labels and colours, kept with the board so every device that
    *  syncs it reads the same colour code. */
   categories: Categories;
+  /** Projects and clients travel with the board for the same reason. */
+  projects: Record<string, Project>;
+  clients: Record<string, Client>;
+  /** Client ids in the order they should be listed. */
+  clientOrder: string[];
+}
+
+/** Pounds, with the pence dropped — project values are round numbers. */
+const money = new Intl.NumberFormat(undefined, {
+  style: 'currency',
+  currency: 'GBP',
+  maximumFractionDigits: 0,
+});
+
+export function formatMoney(value: number): string {
+  return money.format(Number.isFinite(value) ? value : 0);
 }

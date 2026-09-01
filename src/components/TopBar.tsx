@@ -1,11 +1,13 @@
-import { formatWeekRange } from '../dates';
 import SyncBadge from './SyncBadge';
-import type { Settings } from '../types';
+import { VIEWS, VIEW_LABELS, type Settings, type ViewMode } from '../types';
 import type { Sync } from '../sync';
 
 interface Props {
-  weekKeys: string[];
-  onShiftWeek: (weeks: number) => void;
+  view: ViewMode;
+  onView: (view: ViewMode) => void;
+  /** What the arrows are stepping over: a week, a day, a month. */
+  rangeLabel: string;
+  onShift: (steps: number) => void;
   onToday: () => void;
   query: string;
   onQuery: (value: string) => void;
@@ -21,7 +23,12 @@ interface Props {
 }
 
 export default function TopBar(props: Props) {
-  const { weekKeys, onShiftWeek, onToday, query, onQuery, settings, onSettings, onOpenSettings, overdueCount, onRollOver, canUndo, onUndo, searchRef, sync } = props;
+  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, overdueCount, onRollOver, canUndo, onUndo, searchRef, sync } = props;
+
+  // Projects aren't a stretch of time, so there is nothing for the arrows to
+  // step over while they're on screen.
+  const dated = view !== 'projects';
+  const stepName = view === 'day' ? 'day' : view === 'month' ? 'month' : 'week';
 
   return (
     <header className="topbar">
@@ -30,18 +37,35 @@ export default function TopBar(props: Props) {
         <span className="brand-name">T-Card Planner</span>
       </div>
 
-      <div className="weeknav">
-        <button type="button" className="ghost" onClick={() => onShiftWeek(-1)} aria-label="Previous week" title="Previous week">
-          ‹
-        </button>
-        <button type="button" className="ghost" onClick={onToday} title="Jump to this week">
-          Today
-        </button>
-        <button type="button" className="ghost" onClick={() => onShiftWeek(1)} aria-label="Next week" title="Next week">
-          ›
-        </button>
-        <span className="weekrange">{formatWeekRange(weekKeys)}</span>
+      <div className="viewtabs" role="tablist" aria-label="View">
+        {VIEWS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            role="tab"
+            aria-selected={view === option}
+            className={view === option ? 'viewtab is-on' : 'viewtab'}
+            onClick={() => onView(option)}
+          >
+            {VIEW_LABELS[option]}
+          </button>
+        ))}
       </div>
+
+      {dated && (
+        <div className="weeknav">
+          <button type="button" className="ghost" onClick={() => onShift(-1)} aria-label={`Previous ${stepName}`} title={`Previous ${stepName}`}>
+            ‹
+          </button>
+          <button type="button" className="ghost" onClick={onToday} title={`Jump to this ${stepName}`}>
+            Today
+          </button>
+          <button type="button" className="ghost" onClick={() => onShift(1)} aria-label={`Next ${stepName}`} title={`Next ${stepName}`}>
+            ›
+          </button>
+          <span className="weekrange">{rangeLabel}</span>
+        </div>
+      )}
 
       <div className="topbar-tools">
         <button
@@ -89,7 +113,7 @@ export default function TopBar(props: Props) {
           type="button"
           className="ghost"
           onClick={onOpenSettings}
-          title="Categories, the week, backups"
+          title="Categories, clients, the week, backups"
           aria-label="Settings"
         >
           ⚙

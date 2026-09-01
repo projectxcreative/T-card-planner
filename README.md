@@ -2,7 +2,9 @@
 
 A work planner that sits between a T-card board, a calendar and a kanban board.
 Cards carry a title and a rich text description, live in a column per day, and
-move by drag and drop.
+move by drag and drop. They can belong to a **project** with a value against it,
+be tagged with the **clients** they're for, and be published to your **Microsoft
+365 calendar**.
 
 ![The board](docs/board.png)
 
@@ -31,29 +33,96 @@ developing. To watch the Worker refuse everything that hasn't logged in, add
 `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` to `.dev.vars` as well: with no real
 Access session to present, every request is turned away, which is the point.
 
-## How it works
+## Views
 
-**The board.** One column per weekday for the week you're looking at, plus a
-**Backlog** column on the left for anything not yet given a day. Weekends are
-hidden until you turn them on in Settings. Today's column is outlined.
+Four of them, along the top: **Week**, **Day**, **Month** and **Projects**. The
+first three share one date between them, so switching view keeps your place —
+step forward a week, open Day, and you're on a day in that week rather than back
+at today.
 
-**The cards.** Each card is a T-card: a coloured strip across the top naming its
-category, and the body below. Colour is the category (client work, meetings,
-admin, urgent…), and it's the thing you read the board by from across the room.
+### Week
+
+One column per weekday, plus a **Backlog** column on the left for anything not
+yet given a day. Weekends are hidden until you turn them on in Settings. Today's
+column is outlined, and the board opens scrolled to it.
+
+Each day column ends with the hours **logged** on it — the sized cards that got
+finished. The count at the top is what's still ahead of you; the total at the
+bottom is what's behind, which is the number you want when looking back at a
+week. Click a day's name to open it on a timeline.
+
+### Day
+
+![One day on a timeline](docs/day.png)
+
+One day, drawn against the clock between the hours you set in Settings.
+
+- **Drag** a card up and down to move it; **drag its bottom edge** to change how
+  long it is. Both snap to the quarter hour, and the size you drag out is the
+  card's estimate, so it counts toward the day's load like any other.
+- Cards that overlap share the width rather than hiding each other.
+- Cards with no time sit under **No time yet** on the right. **Schedule** drops
+  one onto the timeline after the last thing already on it.
+- With a calendar connected, your existing entries sit in their own column
+  alongside — there to plan around, not to be edited. All-day entries run across
+  the top.
+- A line marks now, on today.
+
+### Month
+
+![The month](docs/month.png)
+
+An Outlook-shaped grid of the month — five columns or seven, depending on
+whether you've turned the weekend on. Cards are chips you can drag to another
+day, calendar entries show as italic chips above them, and each date carries the
+hours logged on it. Click a date to open that day's timeline; a cell with more
+cards than fit says how many more.
+
+### Projects
+
+![A project](docs/projects.png)
+
+A project is a piece of work several cards belong to: a title, a rich text
+description, a **value in pounds**, a category, and the clients it's for. The
+list down the left totals what's open.
+
+- Assign an existing card to a project from the card panel's **Project** box.
+- Or add one from inside the project, with the day it lands on set beside the
+  box — it inherits the project's category and client tags.
+- Every card on the project is listed with its day, and the day can be changed
+  from there without leaving the view.
+- **Archive** takes a finished project out of the card pickers but keeps it.
+  **Delete** removes the project; its cards stay on the board, just without one.
+
+## The cards
+
+Each card is a T-card: a coloured strip across the top naming its category, and
+the body below. Colour is the category (client work, meetings, admin, urgent…),
+and it's the thing you read the board by from across the room.
 
 - **Drag** a card to another day, or up and down to reorder within a day.
   Dropping it nowhere puts it back, and `Esc` mid-drag cancels.
-- **Click** a card to open it: title, status, category, size, day, and a rich
-  text description with headings, lists, checklists, links and code.
+- **Click** a card to open it: title, status, category, project, clients, size,
+  day, start time, and a rich text description with headings, lists, checklists,
+  links and code. It opens in a sidebar or a window, whichever you picked in
+  Settings.
 ![A card open for editing](docs/card.png)
 
-- **Status** is the kanban part — To do, In progress, Blocked, Done. Done cards
-  grey out and stop counting toward the day's load.
+- **Status** is the kanban part — To do, In progress, Blocked, Done. Ticking a
+  card **Done** sinks it to the bottom of its day, under a divider saying how
+  many are down there and how long they took, so the top of a column is what's
+  left and the bottom is what you did. Done cards stop counting toward the day's
+  load and start counting toward the hours logged on it.
+- **Clients** are tags for who the work is for, and a card can wear several.
+  They're separate from the category, which is what *kind* of work it is.
 - **Category** is a named list rather than a row of swatches, so picking one
   doesn't mean remembering what teal stood for.
 - **Size** is a rough hour estimate. Each day's bar fills as you plan it and
   turns red past the hours-per-day you set in Settings, so an over-committed
   Tuesday is visible before you get to it.
+- **Start** puts the card at a time of day, which is where the day view draws
+  it. Dragging it about on that timeline is usually easier than typing one.
+- **Publish to calendar** mirrors the card into Microsoft 365 — see below.
 - **Roll over** appears when past days still hold unfinished cards, and moves
   them all to today in one go.
 
@@ -61,7 +130,7 @@ admin, urgent…), and it's the thing you read the board by from across the room
 
 ![The settings panel](docs/settings.png)
 
-Behind the gear, and it holds three things.
+Behind the gear.
 
 **Categories.** Eight of them, one per colour, and both halves are yours: the
 name on the strip and the colour behind it. Cards store the category rather
@@ -75,18 +144,85 @@ Categories travel with the board, so a rename made on the laptop is there on
 the phone after the next sync. Statuses are the app's own and stay put: a
 *Blocked* pill is red whatever you do to the red category.
 
-**The week.** Whether Saturday and Sunday get columns, how many hours you
-count as a full day, and the theme.
+**Clients.** The tags for who work is for: a name and a colour each, and as many
+as you bill. Adding one puts it in the picker on every card and project; removing
+one takes it off everything that wore it, and says how many that is first. Like
+categories they travel with the board rather than with the device.
 
-**Backup.** Export writes the whole board — cards, days and categories — to a
-JSON file; import replaces what's there, after asking. Both work on a phone,
-which is where the old toolbar buttons couldn't go.
+**Cards.** Three defaults for how cards behave:
+
+- **Default category** — what a new card starts as, so the one you use most
+  isn't a change you make every time.
+- **Show descriptions on cards** — the two-line excerpt under the title. Off
+  makes a column of cards shorter and the week easier to scan.
+- **Open a card in** — a sidebar beside the board, or a window over it.
+
+**The week.** Whether Saturday and Sunday get columns, how many hours you
+count as a full day, the hours the day view's timeline covers, and the theme.
+
+**Microsoft 365 calendar.** Covered below.
+
+**Backup.** Export writes the whole board — cards, days, categories, projects
+and clients — to a JSON file; import replaces what's there, after asking. Both
+work on a phone, which is where the old toolbar buttons couldn't go.
+
+## The Microsoft 365 calendar
+
+Two things, deliberately separate: your existing Outlook entries are **read**
+into the day and month views so the plan is made with your meetings in front of
+you, and a card **writes** an entry only when you tick *Publish to calendar* on
+it.
+
+The sign-in happens in the browser, against your own tenant, using the
+authorization-code flow with **PKCE**. There is no client secret anywhere, and
+nothing about it reaches the Worker — the tokens live on the device that earned
+them, next to the board. Each device connects itself.
+
+### Connecting it
+
+In the [Entra admin centre](https://entra.microsoft.com) (or the Azure portal),
+under **App registrations**, add a registration:
+
+1. **Name** it whatever you like, and pick who can use it — *Accounts in this
+   organizational directory only* is right if the calendar is a work one.
+2. **Redirect URI:** choose the **Single-page application (SPA)** platform, and
+   give it the board's address with a trailing slash — `https://your.board/`.
+   The SPA platform is what makes PKCE work without a secret; the *Web* platform
+   will not do, it insists on one. Settings shows the exact value to paste.
+3. Under **API permissions**, add Microsoft Graph **delegated** permissions
+   `Calendars.ReadWrite` and `User.Read`, then grant consent if your tenant
+   requires an admin to.
+4. Copy the **Application (client) ID** from the overview page, and the
+   **Directory (tenant) ID** with it.
+
+Then open Settings on the board, paste the client ID, put the tenant ID in the
+**Tenant** box (or leave it as `common` for a personal account), and press
+**Connect**. You'll be sent to Microsoft's login and back, and the panel will
+say which account it is.
+
+Running locally? Add `http://localhost:5173/` as a second redirect URI on the
+same registration — a registration can hold several.
+
+### What publishing does
+
+Ticking the box on a card creates an entry at its **start time**, running for
+its **size** — 9am and an hour if it has neither yet. Editing the card's title,
+day, time or length updates the entry; un-ticking the box, or sending the card
+back to the backlog, removes it again. A card that's on the calendar wears a ◈
+on its strip.
+
+The card is the original and the entry is the copy: edits made in Outlook are
+overwritten the next time the card changes. If someone deletes the entry in
+Outlook, the next change makes a fresh one rather than giving up.
+
+Only scheduled cards can be published, because an entry needs a day. The box
+says so rather than just greying out.
 
 ## Keyboard
 
 | Key | Does |
 | --- | --- |
-| `N` | New card on today, opened for editing |
+| `N` | New card on today — or on the day you're looking at, in Day view |
 | `/` | Focus search |
 | `Esc` | Close the card panel or settings, or cancel a drag |
 | `⌘Z` / `Ctrl+Z` | Undo the last move, delete or roll-over |
@@ -245,20 +381,25 @@ worker/access.ts       verifies the Cloudflare Access login on every request
 worker/access.test.mjs signed-JWT checks for it — `npm test`
 wrangler.jsonc         Worker config — KV binding, assets, SPA fallback
 src/
-  App.tsx              board state, drag and drop, keyboard, undo
+  App.tsx              board state, the four views, drag and drop, keyboard, undo
   sync.ts              pull/push, offline queueing, conflict detection, session
   store.ts             reducer, persistence, import normalisation
-  dates.ts             local-time day keys (YYYY-MM-DD) and formatting
-  types.ts             Card, statuses, categories, view settings
+  m365.ts              Entra sign-in (PKCE), reading the calendar, publishing
+  dates.ts             local-time day keys (YYYY-MM-DD), months, times of day
+  types.ts             Card, Project, Client, statuses, categories, settings
   categories.tsx       the category context, and their colours as CSS vars
+  lookups.tsx          projects and clients, for the card face to name them
   colour.ts            one chosen hex -> dark-theme twin and readable ink
   cardText.ts          card-face summary of the rich text
   components/
-    TopBar.tsx         week nav, search, theme, the way into settings
-    SettingsDialog.tsx category labels and colours, the week, backups
-    Lane.tsx           a day (or the backlog), quick add, load bar
-    TCard.tsx          the card face and its sortable wrapper
-    CardDrawer.tsx     the editing panel
+    TopBar.tsx         the view tabs, date nav, search, theme, settings
+    SettingsDialog.tsx categories, clients, card defaults, the week, calendar
+    Lane.tsx           a day (or the backlog), quick add, load bar, logged total
+    TCard.tsx          the card face, its sortable wrapper, client chips
+    CardPanel.tsx      the editing panel, as a sidebar or a window
+    DayView.tsx        the timeline: drag to move, drag the edge to resize
+    MonthView.tsx      the month grid, cards as draggable chips
+    ProjectsView.tsx   the project list and one project's detail
     RichText.tsx       Tiptap editor, lazy-loaded on first card open
     SyncBadge.tsx      sync status, who you're signed in as, the conflict prompt
 ```
@@ -268,8 +409,16 @@ card dropped on Monday stays on Monday whatever the timezone. `lanes` — lane i
 to ordered card ids — is the single source of truth for both which day a card is
 on and where it sits in that day.
 
+`lanes` also carries the done-cards-sink rule: finishing a card moves it to the
+end of its lane, and a board arriving from storage, a sync or an import has the
+same ordering applied on the way in. The "Done" divider is then simply drawn
+where the done pile begins, rather than having to be searched for.
+
 Mouse and touch use separate dnd-kit sensors: a mouse drags after 5px of
-movement, a finger after a short press, so a swipe still scrolls the board.
+movement, a finger after a short press, so a swipe still scrolls the board. The
+day view's timeline is the exception — dragging and resizing there are plain
+pointer events against the grid's own rectangle, which is both simpler than a
+drag library and the only way to get a resize handle out of one.
 
 Category colours reach the CSS as custom properties written into the document
 from the board's own settings, so everything downstream goes on naming
