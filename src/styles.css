@@ -521,8 +521,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sync-badge.is-offline .sync-dot { background: var(--c-amber); }
 .sync-badge.is-conflict .sync-dot,
 .sync-badge.is-unauthorised .sync-dot,
+.sync-badge.is-signed-out .sync-dot,
 .sync-badge.is-unconfigured .sync-dot { background: var(--c-red); }
-.sync-badge.is-conflict, .sync-badge.is-unauthorised, .sync-badge.is-unconfigured { color: var(--danger); border-color: var(--danger); }
+.sync-badge.is-conflict, .sync-badge.is-unauthorised, .sync-badge.is-signed-out, .sync-badge.is-unconfigured { color: var(--danger); border-color: var(--danger); }
 
 @keyframes sync-pulse { 50% { opacity: 0.3; } }
 
@@ -541,6 +542,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .sync-detail { margin: 0 0 10px; font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
 .sync-detail.dim { color: var(--text-faint); }
+/* An email is long and unbreakable; let it wrap rather than widen the popover. */
+.sync-who { font-weight: 600; color: var(--text-dim); overflow-wrap: anywhere; }
 .sync-actions { display: flex; gap: 6px; }
 .sync-actions .ghost { flex: 1; }
 
