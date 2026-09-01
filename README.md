@@ -175,6 +175,15 @@ closed door rather than an open one. Set them before the application exists and
 you lock yourself out until you delete them again (`npx wrangler secret delete
 ACCESS_AUD`).
 
+**Secrets, not plain text.** Neither value is really a secret — the audience tag
+travels inside every token Access issues — but a deploy replaces the Worker's
+plain-text variables with whatever `wrangler.jsonc` declares, and these are
+deliberately not in there. Added through the dashboard as *Text* they would
+survive until the next deploy quietly removed them, at which point the Worker
+sees no Access configured and falls back to the token, putting the app itself
+back in the open with nothing to say so. As secrets they outlive deploys, which
+is the only reason to make them secrets.
+
 With the login in place the token is only useful to things that aren't a
 browser — a backup script, a `wrangler dev` run. Keep it for those, or drop it:
 
