@@ -76,14 +76,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .app {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  /* Row 2 is the conflict banner, which is usually absent and collapses to
+     nothing; the board and the drawer are placed explicitly so they share the
+     last row either way. */
   grid-template-rows: auto auto minmax(0, 1fr);
   height: 100%;
 }
 
+.board { grid-row: 3; grid-column: 1; }
+
 .app.has-drawer { grid-template-columns: minmax(0, 1fr) 380px; }
 .app.has-drawer .topbar,
 .app.has-drawer .conflict { grid-column: 1 / -1; }
-.app.has-drawer .drawer { grid-row: 3; }
 
 /* ---------- top bar ---------- */
 
@@ -342,7 +347,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- drawer ---------- */
 
 .drawer {
-  grid-row: 2;
+  grid-row: 3;
   grid-column: 2;
   display: flex;
   flex-direction: column;
