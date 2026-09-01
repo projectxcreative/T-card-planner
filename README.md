@@ -37,9 +37,12 @@ Access session to present, every request is turned away, which is the point.
 **Backlog** column on the left for anything not yet given a day. Weekends are
 hidden until you turn them on in Settings. Today's column is outlined.
 
-**The cards.** Each card is a T-card: a coloured strip across the top naming its
-category, and the body below. Colour is the category (client work, meetings,
-admin, urgent…), and it's the thing you read the board by from across the room.
+**The cards.** Each card is a T-card: a coloured head across the top naming its
+category, and a stem below it carrying the detail. Colour is the category
+(client work, meetings, admin, urgent…), and it's the thing you read the board
+by from across the room. Cards sit in pockets down the column, each one running
+behind the lip below it, so a day reads as a rack rather than a list — pick one
+up and it comes out of its pocket with its foot showing.
 
 - **Drag** a card to another day, or up and down to reorder within a day.
   Dropping it nowhere puts it back, and `Esc` mid-drag cancels.
