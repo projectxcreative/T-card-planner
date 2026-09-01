@@ -2,7 +2,8 @@ import { memo } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Card, LaneId } from '../types';
-import { COLOUR_LABELS, STATUS_LABELS } from '../types';
+import { STATUS_LABELS, categoryLabel } from '../types';
+import { useCategories } from '../categories';
 import { formatEstimate, summarise } from '../cardText';
 
 interface FaceProps {
@@ -13,6 +14,7 @@ interface FaceProps {
 
 /** The card itself: a coloured header strip over an inset body — the T. */
 export const CardFace = memo(function CardFace({ card, dimmed, dragging }: FaceProps) {
+  const categories = useCategories();
   const { excerpt, checked, total } = summarise(card.description);
   const estimate = formatEstimate(card.estimate);
   const classes = ['tcard', `c-${card.colour}`, `s-${card.status}`];
@@ -22,7 +24,7 @@ export const CardFace = memo(function CardFace({ card, dimmed, dragging }: FaceP
   return (
     <article className={classes.join(' ')}>
       <header className="tcard-head">
-        <span className="tcard-cat">{COLOUR_LABELS[card.colour]}</span>
+        <span className="tcard-cat">{categoryLabel(categories, card.colour)}</span>
         {estimate && <span className="tcard-est">{estimate}</span>}
       </header>
       <div className="tcard-body">

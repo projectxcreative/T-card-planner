@@ -1,13 +1,7 @@
-import { useRef } from 'react';
 import { formatWeekRange } from '../dates';
 import SyncBadge from './SyncBadge';
+import type { Settings } from '../types';
 import type { Sync } from '../sync';
-
-export interface Settings {
-  includeWeekend: boolean;
-  capacity: number;
-  theme: 'light' | 'dark';
-}
 
 interface Props {
   weekKeys: string[];
@@ -17,19 +11,17 @@ interface Props {
   onQuery: (value: string) => void;
   settings: Settings;
   onSettings: (patch: Partial<Settings>) => void;
+  onOpenSettings: () => void;
   overdueCount: number;
   onRollOver: () => void;
   canUndo: boolean;
   onUndo: () => void;
-  onExport: () => void;
-  onImport: (file: File) => void;
   searchRef: React.RefObject<HTMLInputElement | null>;
   sync: Sync;
 }
 
 export default function TopBar(props: Props) {
-  const { weekKeys, onShiftWeek, onToday, query, onQuery, settings, onSettings, overdueCount, onRollOver, canUndo, onUndo, onExport, onImport, searchRef, sync } = props;
-  const fileRef = useRef<HTMLInputElement>(null);
+  const { weekKeys, onShiftWeek, onToday, query, onQuery, settings, onSettings, onOpenSettings, overdueCount, onRollOver, canUndo, onUndo, searchRef, sync } = props;
 
   return (
     <header className="topbar">
@@ -81,27 +73,8 @@ export default function TopBar(props: Props) {
           }}
         />
 
-        <label className="toggle" title="Show Saturday and Sunday">
-          <input
-            type="checkbox"
-            checked={settings.includeWeekend}
-            onChange={(event) => onSettings({ includeWeekend: event.target.checked })}
-          />
-          <span>Weekend</span>
-        </label>
-
-        <label className="capacity" title="Hours you plan to fill in a day">
-          <input
-            type="number"
-            min={1}
-            max={24}
-            step={1}
-            value={settings.capacity}
-            onChange={(event) => onSettings({ capacity: Math.min(24, Math.max(1, Number(event.target.value) || 1)) })}
-          />
-          <span>h/day</span>
-        </label>
-
+        {/* The theme is a one-click thing you flip with the light in the room;
+            everything else that used to sit here lives in Settings now. */}
         <button
           type="button"
           className="ghost"
@@ -112,24 +85,17 @@ export default function TopBar(props: Props) {
           {settings.theme === 'dark' ? '☀' : '☾'}
         </button>
 
-        <button type="button" className="ghost desktop-only" onClick={onExport} title="Download a JSON backup">
-          Export
+        <button
+          type="button"
+          className="ghost"
+          onClick={onOpenSettings}
+          title="Categories, the week, backups"
+          aria-label="Settings"
+        >
+          ⚙
         </button>
-        <button type="button" className="ghost desktop-only" onClick={() => fileRef.current?.click()} title="Replace the board from a JSON backup">
-          Import
-        </button>
+
         <SyncBadge sync={sync} />
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json,.json"
-          hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) onImport(file);
-            event.target.value = '';
-          }}
-        />
       </div>
     </header>
   );

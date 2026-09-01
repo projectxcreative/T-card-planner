@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import type { Card, Colour, LaneId, Status } from '../types';
-import { BACKLOG, COLOURS, COLOUR_LABELS, STATUSES, STATUS_LABELS } from '../types';
+import type { Card, CategoryId, LaneId, Status } from '../types';
+import { BACKLOG, CATEGORY_IDS, STATUSES, STATUS_LABELS, categoryLabel } from '../types';
+import { useCategories } from '../categories';
 import { addDays, formatFullDay, todayKey } from '../dates';
 
 // The editor pulls in ProseMirror; keep it out of the first paint.
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function CardDrawer({ card, lane, onPatch, onMove, onDuplicate, onDelete, onClose }: Props) {
+  const categories = useCategories();
   const [html, setHtml] = useState(card.description);
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
@@ -119,23 +121,25 @@ export default function CardDrawer({ card, lane, onPatch, onMove, onDuplicate, o
           </div>
         </div>
 
-        <div className="field">
+        <label className="field">
           <span className="field-label">Category</span>
-          <div className="swatches">
-            {COLOURS.map((colour: Colour) => (
-              <button
-                key={colour}
-                type="button"
-                className={card.colour === colour ? `swatch c-${colour} is-on` : `swatch c-${colour}`}
-                title={COLOUR_LABELS[colour]}
-                aria-label={COLOUR_LABELS[colour]}
-                aria-pressed={card.colour === colour}
-                onClick={() => onPatch(card.id, { colour })}
-              />
-            ))}
-          </div>
-          <span className="field-hint">{COLOUR_LABELS[card.colour]}</span>
-        </div>
+          {/* A named list beats eight unlabelled swatches: the colour is the
+              shorthand, but you shouldn't have to remember which is which. */}
+          <span className={`picker c-${card.colour}`}>
+            <span className="picker-dot" aria-hidden="true" />
+            <select
+              className="picker-select"
+              value={card.colour}
+              onChange={(event) => onPatch(card.id, { colour: event.target.value as CategoryId })}
+            >
+              {CATEGORY_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {categoryLabel(categories, id)}
+                </option>
+              ))}
+            </select>
+          </span>
+        </label>
 
         <div className="field-row">
           <label className="field">
