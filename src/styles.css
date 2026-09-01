@@ -382,6 +382,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .drawer-body { padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
 
+/* The panel scrolls; its contents do not get squeezed to avoid scrolling.
+   Without this a column of fields taller than the panel has every one of them
+   shrunk a little, which is what cut the last line off a two-line title. */
+.drawer-body > * { flex: none; }
+
 .drawer-title {
   width: 100%;
   border: 0;
@@ -392,7 +397,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   letter-spacing: -0.015em;
   line-height: 1.3;
   resize: none;
-  field-sizing: content;
+  /* The card's title is a textarea grown to fit from script — see
+     `useGrowToFit`. No scrollbar, because it is never taller than its text. */
+  overflow-y: hidden;
   min-height: 1.3em;
   outline: none;
 }

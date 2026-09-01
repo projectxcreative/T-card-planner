@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Card, CardSurface, CategoryId, LaneId, Status } from '../types';
 import { BACKLOG, CATEGORY_IDS, STATUSES, STATUS_LABELS, categoryLabel } from '../types';
 import { useCategories } from '../categories';
@@ -33,6 +33,40 @@ function fromTimeValue(value: string): number | null {
   const match = /^(\d{1,2}):(\d{2})$/.exec(value);
   if (!match) return null;
   return Number(match[1]) * 60 + Number(match[2]);
+}
+
+/**
+ * Grows a one-line textarea to fit what has been typed into it.
+ *
+ * `field-sizing: content` is meant to do this in CSS and doesn't here: inside
+ * the panel's column flex container it settles a line short of the text, so a
+ * two-line title loses its second line. Measuring the box we actually got and
+ * setting the height from it works wherever the panel ends up.
+ */
+function useGrowToFit(ref: React.RefObject<HTMLTextAreaElement | null>, value: string): void {
+  useLayoutEffect(() => {
+    const field = ref.current;
+    if (!field) return;
+
+    const fit = () => {
+      field.style.height = 'auto';
+      field.style.height = `${field.scrollHeight}px`;
+    };
+    fit();
+
+    // A narrower panel wraps the same title onto more lines. Only a change of
+    // width is worth re-measuring for — reacting to our own height change as
+    // well would be a loop.
+    let width = field.clientWidth;
+    const observer = new ResizeObserver((entries) => {
+      const next = entries[0].contentRect.width;
+      if (next === width) return;
+      width = next;
+      fit();
+    });
+    observer.observe(field);
+    return () => observer.disconnect();
+  }, [ref, value]);
 }
 
 function CardBody(props: CardPanelProps) {
@@ -71,6 +105,8 @@ function CardBody(props: CardPanelProps) {
   useEffect(() => {
     if (!card.title) titleRef.current?.focus();
   }, [card.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useGrowToFit(titleRef, card.title);
 
   const scheduled = lane !== BACKLOG ? lane : '';
   const openProjects = Object.values(projects)
