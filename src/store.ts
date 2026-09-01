@@ -1,6 +1,8 @@
 import {
   BACKLOG,
   CATEGORY_IDS,
+  CLIENT_NAME_MAX,
+  CLIENT_PALETTE,
   DEFAULT_CATEGORIES,
   LABEL_MAX,
   defaultCategories,
@@ -9,21 +11,31 @@ import {
   type Categories,
   type Category,
   type CategoryId,
+  type Client,
   type LaneId,
+  type Project,
   type Status,
 } from './types';
 import { isHexColour } from './colour';
 import { addDays, todayKey } from './dates';
 
 const STORAGE_KEY = 'tcard-planner.board.v1';
-const VERSION = 1;
+const VERSION = 2;
 
 export function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 }
 
 export function emptyBoard(): BoardState {
-  return { version: VERSION, cards: {}, lanes: {}, categories: defaultCategories() };
+  return {
+    version: VERSION,
+    cards: {},
+    lanes: {},
+    categories: defaultCategories(),
+    projects: {},
+    clients: {},
+    clientOrder: [],
+  };
 }
 
 export function newCard(title: string, patch: Partial<Card> = {}): Card {
@@ -35,10 +47,36 @@ export function newCard(title: string, patch: Partial<Card> = {}): Card {
     colour: 'slate',
     status: 'todo',
     estimate: 0,
+    start: null,
+    projectId: null,
+    clients: [],
+    publish: false,
+    eventId: null,
+    completedAt: null,
     createdAt: now,
     updatedAt: now,
     ...patch,
   };
+}
+
+export function newProject(title: string, patch: Partial<Project> = {}): Project {
+  const now = new Date().toISOString();
+  return {
+    id: uid(),
+    title,
+    description: '',
+    value: 0,
+    clients: [],
+    colour: 'blue',
+    archived: false,
+    createdAt: now,
+    updatedAt: now,
+    ...patch,
+  };
+}
+
+export function newClient(name: string, colour: string): Client {
+  return { id: uid(), name, colour };
 }
 
 export type Action =
@@ -50,6 +88,12 @@ export type Action =
   | { type: 'rollOver'; from: LaneId[]; to: LaneId }
   | { type: 'category'; id: CategoryId; patch: Partial<Category> }
   | { type: 'resetCategories' }
+  | { type: 'addProject'; project: Project }
+  | { type: 'updateProject'; id: string; patch: Partial<Project> }
+  | { type: 'deleteProject'; id: string }
+  | { type: 'addClient'; client: Client }
+  | { type: 'updateClient'; id: string; patch: Partial<Client> }
+  | { type: 'deleteClient'; id: string }
   | { type: 'replace'; state: BoardState };
 
 export function laneOf(state: BoardState, cardId: string): LaneId | undefined {
@@ -61,6 +105,23 @@ export function laneOf(state: BoardState, cardId: string): LaneId | undefined {
 
 export function cardsIn(state: BoardState, lane: LaneId): Card[] {
   return (state.lanes[lane] ?? []).map((id) => state.cards[id]).filter(Boolean);
+}
+
+/** Every card on this project, newest day first, so a project reads as a plan
+ *  rather than as whatever order the cards happen to sit in on the board. */
+export function cardsOfProject(state: BoardState, projectId: string): { card: Card; lane: LaneId }[] {
+  const found: { card: Card; lane: LaneId }[] = [];
+  for (const [lane, ids] of Object.entries(state.lanes)) {
+    for (const id of ids) {
+      const card = state.cards[id];
+      if (card?.projectId === projectId) found.push({ card, lane });
+    }
+  }
+  return found.sort((a, b) => {
+    // The backlog sits after the scheduled days rather than before "b…".
+    const key = (lane: LaneId) => (lane === BACKLOG ? '￿' : lane);
+    return key(a.lane) < key(b.lane) ? -1 : key(a.lane) > key(b.lane) ? 1 : 0;
+  });
 }
 
 /** Drops a card into a lane at an index, removing it from wherever it was. */
@@ -76,6 +137,15 @@ function place(lanes: BoardState['lanes'], id: string, lane: LaneId, index?: num
   target.splice(at, 0, id);
   next[lane] = target;
   return next;
+}
+
+/** Where a card lands when it is dropped into a lane by hand: above the done
+ *  pile, because finished cards have sunk to the bottom and a card being moved
+ *  onto a day is, by definition, not finished. */
+function firstDoneIndex(state: BoardState, lane: LaneId): number {
+  const ids = state.lanes[lane] ?? [];
+  const at = ids.findIndex((id) => state.cards[id]?.status === 'done');
+  return at === -1 ? ids.length : at;
 }
 
 /** Do two boards lay their cards out identically? Empty lanes are invisible, so
@@ -100,14 +170,29 @@ export function reducer(state: BoardState, action: Action): BoardState {
   switch (action.type) {
     case 'add': {
       const cards = { ...state.cards, [action.card.id]: action.card };
-      return { ...state, cards, lanes: place(state.lanes, action.card.id, action.lane, action.index) };
+      const index = action.index ?? firstDoneIndex(state, action.lane);
+      return { ...state, cards, lanes: place(state.lanes, action.card.id, action.lane, index) };
     }
 
     case 'update': {
       const existing = state.cards[action.id];
       if (!existing) return state;
       const updated: Card = { ...existing, ...action.patch, updatedAt: new Date().toISOString() };
-      return { ...state, cards: { ...state.cards, [action.id]: updated } };
+
+      // Finishing a card stamps it and sinks it; un-finishing clears the stamp
+      // but leaves it where it is, so an accidental tick doesn't reshuffle a day.
+      let lanes = state.lanes;
+      if (action.patch.status && action.patch.status !== existing.status) {
+        if (updated.status === 'done') {
+          updated.completedAt = new Date().toISOString();
+          const lane = laneOf(state, action.id);
+          if (lane) lanes = place(lanes, action.id, lane);
+        } else {
+          updated.completedAt = null;
+        }
+      }
+
+      return { ...state, cards: { ...state.cards, [action.id]: updated }, lanes };
     }
 
     case 'delete': {
@@ -130,6 +215,12 @@ export function reducer(state: BoardState, action: Action): BoardState {
         colour: source.colour,
         status: source.status,
         estimate: source.estimate,
+        start: source.start,
+        projectId: source.projectId,
+        clients: [...source.clients],
+        // The copy is its own card: it gets its own calendar entry, or none.
+        publish: false,
+        eventId: null,
       });
       const index = (state.lanes[lane] ?? []).indexOf(action.id) + 1;
       return {
@@ -140,8 +231,10 @@ export function reducer(state: BoardState, action: Action): BoardState {
     }
 
     case 'move': {
-      if (!state.cards[action.id]) return state;
-      const next = { ...state, lanes: place(state.lanes, action.id, action.lane, action.index) };
+      const card = state.cards[action.id];
+      if (!card) return state;
+      const index = action.index ?? (card.status === 'done' ? undefined : firstDoneIndex(state, action.lane));
+      const next = { ...state, lanes: place(state.lanes, action.id, action.lane, index) };
       return sameArrangement(state, next) ? state : next;
     }
 
@@ -152,7 +245,7 @@ export function reducer(state: BoardState, action: Action): BoardState {
       const moving = action.from
         .filter((lane) => lane !== action.to)
         .flatMap((lane) => (lanes[lane] ?? []).filter((id) => state.cards[id]?.status !== 'done'));
-      for (const id of moving) lanes = place(lanes, id, action.to);
+      for (const id of moving) lanes = place(lanes, id, action.to, firstDoneIndex({ ...state, lanes }, action.to));
       return moving.length > 0 ? { ...state, lanes } : state;
     }
 
@@ -167,6 +260,57 @@ export function reducer(state: BoardState, action: Action): BoardState {
 
     case 'resetCategories':
       return { ...state, categories: defaultCategories() };
+
+    case 'addProject':
+      return { ...state, projects: { ...state.projects, [action.project.id]: action.project } };
+
+    case 'updateProject': {
+      const current = state.projects[action.id];
+      if (!current) return state;
+      const updated: Project = { ...current, ...action.patch, updatedAt: new Date().toISOString() };
+      return { ...state, projects: { ...state.projects, [action.id]: updated } };
+    }
+
+    case 'deleteProject': {
+      const projects = { ...state.projects };
+      delete projects[action.id];
+      // The cards outlive the project; they simply stop belonging to one.
+      const cards: Record<string, Card> = {};
+      for (const [id, card] of Object.entries(state.cards)) {
+        cards[id] = card.projectId === action.id ? { ...card, projectId: null } : card;
+      }
+      return { ...state, projects, cards };
+    }
+
+    case 'addClient':
+      return {
+        ...state,
+        clients: { ...state.clients, [action.client.id]: action.client },
+        clientOrder: [...state.clientOrder, action.client.id],
+      };
+
+    case 'updateClient': {
+      const current = state.clients[action.id];
+      if (!current) return state;
+      return { ...state, clients: { ...state.clients, [action.id]: { ...current, ...action.patch } } };
+    }
+
+    case 'deleteClient': {
+      const clients = { ...state.clients };
+      delete clients[action.id];
+      const drop = (ids: string[]) => (ids.includes(action.id) ? ids.filter((x) => x !== action.id) : ids);
+      const cards: Record<string, Card> = {};
+      for (const [id, card] of Object.entries(state.cards)) {
+        const kept = drop(card.clients);
+        cards[id] = kept === card.clients ? card : { ...card, clients: kept };
+      }
+      const projects: Record<string, Project> = {};
+      for (const [id, project] of Object.entries(state.projects)) {
+        const kept = drop(project.clients);
+        projects[id] = kept === project.clients ? project : { ...project, clients: kept };
+      }
+      return { ...state, clients, clientOrder: state.clientOrder.filter((x) => x !== action.id), cards, projects };
+    }
 
     case 'replace':
       return action.state;
@@ -199,11 +343,64 @@ function normaliseCategories(input: unknown): Categories {
   return categories;
 }
 
+function normaliseClients(input: unknown, order: unknown): Pick<BoardState, 'clients' | 'clientOrder'> {
+  const raw = (input ?? {}) as Record<string, Partial<Client>>;
+  const clients: Record<string, Client> = {};
+  let i = 0;
+  for (const [id, value] of Object.entries(raw)) {
+    if (!value || typeof value !== 'object') continue;
+    const name = typeof value.name === 'string' ? value.name.trim().slice(0, CLIENT_NAME_MAX) : '';
+    if (!name) continue;
+    clients[id] = {
+      id,
+      name,
+      colour: isHexColour(value.colour) ? value.colour.toLowerCase() : CLIENT_PALETTE[i % CLIENT_PALETTE.length],
+    };
+    i++;
+  }
+  const listed = Array.isArray(order) ? (order as unknown[]).filter((id): id is string => typeof id === 'string' && !!clients[id]) : [];
+  const seen = new Set(listed);
+  return { clients, clientOrder: [...listed, ...Object.keys(clients).filter((id) => !seen.has(id))] };
+}
+
+function normaliseProjects(input: unknown, clients: Record<string, Client>): Record<string, Project> {
+  const raw = (input ?? {}) as Record<string, Partial<Project>>;
+  const projects: Record<string, Project> = {};
+  for (const [id, value] of Object.entries(raw)) {
+    if (!value || typeof value !== 'object' || typeof value.title !== 'string') continue;
+    const now = new Date().toISOString();
+    projects[id] = {
+      id,
+      title: value.title,
+      description: typeof value.description === 'string' ? value.description : '',
+      value: Number.isFinite(value.value) ? Math.max(0, Number(value.value)) : 0,
+      clients: Array.isArray(value.clients) ? value.clients.filter((c): c is string => typeof c === 'string' && !!clients[c]) : [],
+      colour: CATEGORY_IDS.includes(value.colour as CategoryId) ? (value.colour as CategoryId) : 'blue',
+      archived: value.archived === true,
+      createdAt: value.createdAt ?? now,
+      updatedAt: value.updatedAt ?? now,
+    };
+  }
+  return projects;
+}
+
+/** Minutes from midnight, or null. Anything outside a day is "unplaced" rather
+ *  than clamped, so a bad value doesn't quietly become 00:00. */
+function normaliseStart(value: unknown): number | null {
+  if (!Number.isFinite(value)) return null;
+  const minutes = Math.round(Number(value));
+  return minutes >= 0 && minutes < 24 * 60 ? minutes : null;
+}
+
 /** Tolerant of hand-edited or partial files — anything unrecognised is dropped
- *  rather than throwing away the whole board. */
+ *  rather than throwing away the whole board. Boards written before projects
+ *  and clients existed simply arrive without them. */
 export function normalise(input: unknown): BoardState {
   const raw = input as Partial<BoardState> | null;
   if (!raw || typeof raw !== 'object') return emptyBoard();
+
+  const { clients, clientOrder } = normaliseClients(raw.clients, raw.clientOrder);
+  const projects = normaliseProjects(raw.projects, clients);
 
   const cards: Record<string, Card> = {};
   for (const [id, value] of Object.entries(raw.cards ?? {})) {
@@ -214,6 +411,12 @@ export function normalise(input: unknown): BoardState {
       colour: CATEGORY_IDS.includes(value.colour as CategoryId) ? (value.colour as CategoryId) : 'slate',
       status: (value.status ?? 'todo') as Status,
       estimate: Number.isFinite(value.estimate) ? Number(value.estimate) : 0,
+      start: normaliseStart(value.start),
+      projectId: typeof value.projectId === 'string' && projects[value.projectId] ? value.projectId : null,
+      clients: Array.isArray(value.clients) ? value.clients.filter((c): c is string => typeof c === 'string' && !!clients[c]) : [],
+      publish: value.publish === true,
+      eventId: typeof value.eventId === 'string' ? value.eventId : null,
+      completedAt: typeof value.completedAt === 'string' ? value.completedAt : null,
       createdAt: value.createdAt ?? new Date().toISOString(),
       updatedAt: value.updatedAt ?? new Date().toISOString(),
     };
@@ -225,13 +428,29 @@ export function normalise(input: unknown): BoardState {
     if (!Array.isArray(ids)) continue;
     const kept = ids.filter((id) => typeof id === 'string' && cards[id] && !seen.has(id));
     kept.forEach((id) => seen.add(id));
-    if (kept.length > 0 || lane === BACKLOG) lanes[lane] = kept;
+    // Finished cards sink here too, not only when they are ticked: a board
+    // arriving from an older version, another device, or a hand-edited export
+    // has to hold the same invariant, because the "Done" divider on a column
+    // is drawn where the done pile begins rather than searched for.
+    const sunk = [
+      ...kept.filter((id) => cards[id].status !== 'done'),
+      ...kept.filter((id) => cards[id].status === 'done'),
+    ];
+    if (sunk.length > 0 || lane === BACKLOG) lanes[lane] = sunk;
   }
   // Any card that lost its lane lands in the backlog rather than vanishing.
   const orphans = Object.keys(cards).filter((id) => !seen.has(id));
   if (orphans.length > 0) lanes[BACKLOG] = [...(lanes[BACKLOG] ?? []), ...orphans];
 
-  return { version: VERSION, cards, lanes, categories: normaliseCategories(raw.categories) };
+  return {
+    version: VERSION,
+    cards,
+    lanes,
+    categories: normaliseCategories(raw.categories),
+    projects,
+    clients,
+    clientOrder,
+  };
 }
 
 export function load(): BoardState {
@@ -265,11 +484,23 @@ export function isUntouched(state: BoardState): boolean {
 /** A first run with an empty board looks broken, so show how the pieces fit. */
 function seedBoard(): BoardState {
   const today = todayKey();
+  const client: Client = { id: `${SEED_PREFIX}client`, name: 'Acme Ltd', colour: CLIENT_PALETTE[0] };
+  const project = newProject('Acme website refresh', {
+    id: `${SEED_PREFIX}project`,
+    value: 4500,
+    clients: [client.id],
+    colour: 'blue',
+    description: '<p>Projects group cards, carry a value, and can be tagged with the clients they are for.</p>',
+  });
+
   const cards = [
     newCard('Welcome — click a card to open it', {
       id: `${SEED_PREFIX}welcome`,
       colour: 'blue',
       estimate: 0.5,
+      start: 9 * 60,
+      projectId: project.id,
+      clients: [client.id],
       description:
         '<p>This is a <strong>T-card</strong>. The coloured strip is its category, the body is yours.</p>' +
         '<ul><li>Drag cards between days, or up and down within a day</li>' +
@@ -280,6 +511,7 @@ function seedBoard(): BoardState {
       colour: 'green',
       status: 'doing',
       estimate: 1,
+      start: 10 * 60,
     }),
     newCard('Anything unscheduled lives in the backlog', {
       id: `${SEED_PREFIX}backlog`,
@@ -290,6 +522,9 @@ function seedBoard(): BoardState {
   return {
     version: VERSION,
     categories: defaultCategories(),
+    projects: { [project.id]: project },
+    clients: { [client.id]: client },
+    clientOrder: [client.id],
     cards: Object.fromEntries(cards.map((c) => [c.id, c])),
     lanes: {
       [today]: [cards[0].id, cards[1].id],
