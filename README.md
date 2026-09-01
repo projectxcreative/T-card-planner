@@ -35,10 +35,10 @@ Access session to present, every request is turned away, which is the point.
 
 ## Views
 
-Four of them, along the top: **Week**, **Day**, **Month** and **Projects**. The
-first three share one date between them, so switching view keeps your place —
-step forward a week, open Day, and you're on a day in that week rather than back
-at today.
+Five of them, along the top: **Week**, **Day**, **Month**, **Projects** and
+**Clients**. The first three share one date between them, so switching view
+keeps your place — step forward a week, open Day, and you're on a day in that
+week rather than back at today.
 
 ### Week
 
@@ -94,6 +94,42 @@ list down the left totals what's open.
 - **Archive** takes a finished project out of the card pickers but keeps it.
   **Delete** removes the project; its cards stay on the board, just without one.
 
+### Clients
+
+![A client](docs/clients.png)
+
+The same shape as Projects, from the other direction: pick a client and see
+what you're doing for them.
+
+- **Value** is their open projects added up; **Still to do** and **Logged** are
+  the hours on their cards.
+- **Their cards** means cards tagged with them *and* every card on their
+  projects. That second half matters: a card created inside a project inherits
+  its client tags, but one assigned to the project later doesn't — and either
+  way, a card on an Acme project is Acme's work. Counting only the tagged ones
+  would quietly under-report what a client is costing you.
+- Add, rename, recolour and remove clients here as well as in Settings, and
+  click one of their projects to jump straight to it.
+
+Removing a client takes the tag off everything wearing it; the cards and
+projects themselves stay.
+
+## Narrowing the board
+
+Two ways, and they stack — both have to be satisfied, not either.
+
+**Search** (`/`) matches titles, descriptions, categories, statuses, project
+titles and client names.
+
+**The client filter**, next to the search box, narrows the board to one or more
+clients using the same definition of their work as the Clients view. It's on the
+Week, Day and Month views; Projects and Clients have nothing to narrow.
+
+Both **dim** what doesn't match rather than hiding it, so the shape of the week
+stays put while you look at part of it. The filter isn't remembered between
+sessions — coming back to a filtered board you don't remember setting is worse
+than setting it again.
+
 ## The cards
 
 Each card is a T-card: a coloured strip across the top naming its category, and
@@ -147,7 +183,8 @@ the phone after the next sync. Statuses are the app's own and stay put: a
 **Clients.** The tags for who work is for: a name and a colour each, and as many
 as you bill. Adding one puts it in the picker on every card and project; removing
 one takes it off everything that wore it, and says how many that is first. Like
-categories they travel with the board rather than with the device.
+categories they travel with the board rather than with the device. The Clients
+view does all of this too, alongside what each client's work adds up to.
 
 **Cards.** Three defaults for how cards behave:
 
@@ -228,8 +265,8 @@ says so rather than just greying out.
 | `⌘Z` / `Ctrl+Z` | Undo the last move, delete or roll-over |
 | `Enter` | Open the focused card |
 
-Search dims what doesn't match rather than hiding it, so the shape of the week
-stays put while you look.
+Search and the client filter both dim what doesn't match rather than hiding it,
+so the shape of the week stays put while you look.
 
 ## On a phone
 
@@ -400,6 +437,8 @@ src/
     DayView.tsx        the timeline: drag to move, drag the edge to resize
     MonthView.tsx      the month grid, cards as draggable chips
     ProjectsView.tsx   the project list and one project's detail
+    ClientsView.tsx    the client list, their projects, cards and totals
+    ClientFilter.tsx   the toolbar popover that narrows the board to a client
     RichText.tsx       Tiptap editor, lazy-loaded on first card open
     SyncBadge.tsx      sync status, who you're signed in as, the conflict prompt
 ```

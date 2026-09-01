@@ -94,16 +94,16 @@ export default function ProjectsView(props: Props) {
   };
 
   return (
-    <div className="projects">
-      <aside className="projects-list">
-        <header className="projects-list-head">
-          <h2 className="projects-heading">Projects</h2>
-          <span className="projects-total" title="Value of every project still open">
+    <div className="split">
+      <aside className="split-list">
+        <header className="split-list-head">
+          <h2 className="split-heading">Projects</h2>
+          <span className="split-total" title="Value of every project still open">
             {formatMoney(totalValue)}
           </span>
         </header>
 
-        <div className="projects-new">
+        <div className="split-new">
           <input
             className="lane-add-input"
             value={newTitle}
@@ -118,22 +118,22 @@ export default function ProjectsView(props: Props) {
           />
         </div>
 
-        <ul className="projects-items">
-          {projects.length === 0 && <li className="projects-empty">No projects yet.</li>}
+        <ul className="split-items">
+          {projects.length === 0 && <li className="split-empty">No projects yet.</li>}
           {projects.map((project) => {
             const own = cardsOf(project.id);
-            const classes = ['projects-item', `c-${project.colour}`];
+            const classes = ['split-item', `c-${project.colour}`];
             if (project.id === selected) classes.push('is-on');
             if (project.archived) classes.push('is-archived');
             return (
               <li key={project.id}>
                 <button type="button" className={classes.join(' ')} onClick={() => onSelect(project.id)}>
-                  <span className="projects-item-title">{project.title || 'Untitled project'}</span>
-                  <span className="projects-item-meta">
+                  <span className="split-item-title">{project.title || 'Untitled project'}</span>
+                  <span className="split-item-meta">
                     {formatMoney(project.value)} · {own.length} card{own.length === 1 ? '' : 's'}
                     {project.archived ? ' · archived' : ''}
                   </span>
-                  <span className="projects-item-clients">
+                  <span className="split-item-clients">
                     {project.clients.map((id) => clients[id]).filter(Boolean).map((client) => (
                       <span key={client.id} className="chip is-compact" style={{ '--chip': client.colour } as React.CSSProperties}>
                         {client.name}
@@ -147,9 +147,9 @@ export default function ProjectsView(props: Props) {
         </ul>
       </aside>
 
-      <section className="projects-detail">
+      <section className="split-detail">
         {!active ? (
-          <div className="projects-blank">
+          <div className="split-blank">
             <h3>Pick a project</h3>
             <p>
               A project gathers the cards for one piece of work, carries what it is worth, and can be tagged with the
@@ -158,7 +158,7 @@ export default function ProjectsView(props: Props) {
           </div>
         ) : (
           <>
-            <header className="projects-detail-head">
+            <header className="split-detail-head">
               <input
                 className="drawer-title"
                 value={active.title}
@@ -189,7 +189,7 @@ export default function ProjectsView(props: Props) {
               </div>
             </header>
 
-            <div className="projects-detail-body">
+            <div className="split-detail-body">
               <div className="field-row">
                 <ValueField project={active} onPatch={onPatch} />
 
@@ -252,7 +252,7 @@ export default function ProjectsView(props: Props) {
                   Cards · {cards.length} · {done} done{hours > 0 ? ` · ${formatEstimate(hours)}` : ''}
                 </span>
 
-                <div className="projects-addcard">
+                <div className="split-addcard">
                   <input
                     className="lane-add-input"
                     value={cardTitle}
@@ -275,18 +275,18 @@ export default function ProjectsView(props: Props) {
                   />
                 </div>
 
-                <ul className="projects-cards">
-                  {cards.length === 0 && <li className="projects-empty">No cards on this project yet.</li>}
+                <ul className="split-cards">
+                  {cards.length === 0 && <li className="split-empty">No cards on this project yet.</li>}
                   {cards.map(({ card, lane }) => (
-                    <li key={card.id} className={`projects-card c-${card.colour} s-${card.status}`}>
-                      <button type="button" className="projects-card-open" onClick={() => onOpenCard(card.id)}>
-                        <span className="projects-card-title">{card.title || 'Untitled card'}</span>
+                    <li key={card.id} className={`split-card c-${card.colour} s-${card.status}`}>
+                      <button type="button" className="split-card-open" onClick={() => onOpenCard(card.id)}>
+                        <span className="split-card-title">{card.title || 'Untitled card'}</span>
                         <span className={`pill p-${card.status}`}>{STATUS_LABELS[card.status]}</span>
-                        {card.estimate > 0 && <span className="projects-card-est">{formatEstimate(card.estimate)}</span>}
+                        {card.estimate > 0 && <span className="split-card-est">{formatEstimate(card.estimate)}</span>}
                       </button>
                       <input
                         type="date"
-                        className="projects-card-day"
+                        className="split-card-day"
                         value={lane === BACKLOG ? '' : lane}
                         title={lane === BACKLOG ? 'In the backlog' : formatDayNumber(lane)}
                         onChange={(event) => onMoveCard(card.id, event.target.value || BACKLOG)}

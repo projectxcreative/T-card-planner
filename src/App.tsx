@@ -25,11 +25,15 @@ import SettingsDialog from './components/SettingsDialog';
 import DayView from './components/DayView';
 import MonthView from './components/MonthView';
 import ProjectsView from './components/ProjectsView';
+import ClientsView from './components/ClientsView';
 import { CardFace } from './components/TCard';
 import type { Action } from './store';
 import {
   cardsIn,
+  cardsOfClient,
   cardsOfProject,
+  clientTotals,
+  projectsOfClient,
   laneOf,
   load,
   newCard,
@@ -121,6 +125,11 @@ export default function App() {
   const [focus, setFocus] = useState(todayKey);
   const [openId, setOpenId] = useState<string | null>(null);
   const [openProject, setOpenProject] = useState<string | null>(null);
+  const [openClient, setOpenClient] = useState<string | null>(null);
+  /** Client ids the board is narrowed to; empty means all of them. Deliberately
+   *  not persisted — coming back to a filtered board you don't remember setting
+   *  is worse than setting it again. */
+  const [clientFilter, setClientFilter] = useState<string[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
@@ -173,7 +182,7 @@ export default function App() {
     today?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
   }, [focus, view]);
 
-  const matches = useMemo(() => {
+  const searchMatches = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return null;
     const found = new Set<string>();
@@ -192,6 +201,23 @@ export default function App() {
     }
     return found;
   }, [query, board.cards, board.categories, board.projects, board.clients]);
+
+  /** The filter uses the same definition of a client's work as the Clients
+   *  view: their tagged cards, plus everything on their projects. */
+  const filterMatches = useMemo(() => {
+    const wanted = clientFilter.filter((id) => board.clients[id]);
+    if (wanted.length === 0) return null;
+    const found = new Set<string>();
+    for (const id of wanted) for (const { card } of cardsOfClient(board, id)) found.add(card.id);
+    return found;
+  }, [board, clientFilter]);
+
+  // Two narrowings at once means both have to be satisfied, not either.
+  const matches = useMemo(() => {
+    if (!searchMatches) return filterMatches;
+    if (!filterMatches) return searchMatches;
+    return new Set([...searchMatches].filter((id) => filterMatches.has(id)));
+  }, [filterMatches, searchMatches]);
 
   const categoryCounts = useMemo(() => {
     const counts = Object.fromEntries(CATEGORY_IDS.map((id) => [id, 0])) as Record<CategoryId, number>;
@@ -235,6 +261,14 @@ export default function App() {
   useEffect(() => {
     if (openId && !board.cards[openId]) setOpenId(null);
   }, [openId, board.cards]);
+
+  useEffect(() => {
+    setClientFilter((current) => {
+      const kept = current.filter((id) => board.clients[id]);
+      return kept.length === current.length ? current : kept;
+    });
+    setOpenClient((current) => (current && !board.clients[current] ? null : current));
+  }, [board.clients]);
 
   const lookups = useMemo(
     () => ({
@@ -371,6 +405,16 @@ export default function App() {
   );
 
   const projectCards = useCallback((projectId: string) => cardsOfProject(board, projectId), [board]);
+  const clientProjects = useCallback((clientId: string) => projectsOfClient(board, clientId), [board]);
+  const clientCards = useCallback((clientId: string) => cardsOfClient(board, clientId), [board]);
+  const clientSums = useCallback((clientId: string) => clientTotals(board, clientId), [board]);
+
+  /** From a client's project straight to that project, which is where you go
+   *  next often enough that hunting for it in the other tab is a nuisance. */
+  const openProjectFrom = useCallback((id: string) => {
+    setOpenProject(id);
+    setView('projects');
+  }, []);
 
   /* ---------- import / export ---------- */
 
@@ -567,6 +611,9 @@ export default function App() {
             canUndo={past.length > 0}
             onUndo={undo}
             searchRef={searchRef}
+            clients={clientList}
+            clientFilter={clientFilter}
+            onClientFilter={setClientFilter}
             sync={sync}
           />
 
@@ -667,6 +714,25 @@ export default function App() {
                 onDelete={deleteProject}
                 onOpenCard={setOpenId}
                 onAddCard={addProjectCard}
+                onMoveCard={moveCard}
+              />
+            </main>
+          )}
+
+          {view === 'clients' && (
+            <main className="board is-clients">
+              <ClientsView
+                clients={clientList}
+                totals={clientSums}
+                projectsOf={clientProjects}
+                cardsOf={clientCards}
+                selected={openClient}
+                onSelect={setOpenClient}
+                onCreate={addClient}
+                onPatch={(id, patch) => dispatch({ type: 'updateClient', id, patch })}
+                onDelete={deleteClient}
+                onOpenCard={setOpenId}
+                onOpenProject={openProjectFrom}
                 onMoveCard={moveCard}
               />
             </main>

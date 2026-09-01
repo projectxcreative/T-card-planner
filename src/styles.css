@@ -924,7 +924,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------- day view ---------- */
 
-.board.is-day, .board.is-month, .board.is-projects { display: block; overflow: auto; }
+.board.is-day, .board.is-month, .board.is-projects, .board.is-clients { display: block; overflow: auto; }
 
 .dayview { display: flex; flex-direction: column; gap: 12px; min-height: 100%; }
 
@@ -1242,9 +1242,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .monthcell-more:hover { color: var(--accent); }
 .monthfoot { margin: 4px 2px 0; font-size: 12px; color: var(--text-faint); }
 
-/* ---------- projects ---------- */
+/* ---------- the split views: projects, clients ---------- */
 
-.projects {
+/* A list down the left and one thing's detail on the right. Projects and
+   clients are the same shape, so they are the same layout wearing different
+   contents rather than two of everything. */
+.split {
   display: grid;
   grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
   gap: 14px;
@@ -1252,7 +1255,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   min-height: 100%;
 }
 
-.projects-list {
+.split-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1262,15 +1265,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-radius: 10px;
 }
 
-.projects-list-head { display: flex; align-items: baseline; gap: 8px; }
-.projects-heading { margin: 0; font-size: 14px; font-weight: 650; }
-.projects-total { margin-left: auto; font-size: 12.5px; color: var(--s-done); font-weight: 650; font-variant-numeric: tabular-nums; }
-.projects-new .lane-add-input { width: 100%; }
+.split-list-head { display: flex; align-items: baseline; gap: 8px; }
+.split-heading { margin: 0; font-size: 14px; font-weight: 650; }
+.split-total { margin-left: auto; font-size: 12.5px; color: var(--s-done); font-weight: 650; font-variant-numeric: tabular-nums; }
+.split-new .lane-add-input { width: 100%; }
 
-.projects-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.projects-empty { padding: 8px 2px; color: var(--text-faint); font-size: 12.5px; }
+.split-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.split-empty { padding: 8px 2px; color: var(--text-faint); font-size: 12.5px; }
 
-.projects-item {
+.split-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1284,14 +1287,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-.projects-item:hover { border-color: var(--line); }
-.projects-item.is-on { background: var(--accent-soft); border-color: var(--accent); }
-.projects-item.is-archived { opacity: 0.6; }
-.projects-item-title { font-size: 13px; font-weight: 620; overflow-wrap: anywhere; }
-.projects-item-meta { font-size: 11.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.projects-item-clients { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.split-item:hover { border-color: var(--line); }
+.split-item.is-on { background: var(--accent-soft); border-color: var(--accent); }
+.split-item.is-archived { opacity: 0.6; }
+.split-item-title { font-size: 13px; font-weight: 620; overflow-wrap: anywhere; }
+.split-item-meta { font-size: 11.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.split-item-clients { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
 
-.projects-detail {
+.split-detail {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1300,25 +1303,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-radius: 10px;
 }
 
-.projects-detail-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line-soft); }
-.projects-detail-head .drawer-title { flex: 1; min-width: 0; }
-.projects-detail-body { display: flex; flex-direction: column; gap: 16px; padding: 14px; }
+.split-detail-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line-soft); }
+.split-detail-head .drawer-title { flex: 1; min-width: 0; }
+.split-detail-body { display: flex; flex-direction: column; gap: 16px; padding: 14px; }
 
-.projects-blank { padding: 28px 22px; max-width: 46ch; }
-.projects-blank h3 { margin: 0 0 6px; font-size: 15px; font-weight: 650; }
-.projects-blank p { margin: 0; color: var(--text-dim); line-height: 1.55; }
+.split-blank { padding: 28px 22px; max-width: 46ch; }
+.split-blank h3 { margin: 0 0 6px; font-size: 15px; font-weight: 650; }
+.split-blank p { margin: 0; color: var(--text-dim); line-height: 1.55; }
 
 .money { position: relative; display: block; }
 .money-sign { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-faint); pointer-events: none; }
 .money-input { width: 100%; padding: 6px 8px 6px 22px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
 
-.projects-addcard { display: flex; gap: 8px; }
-.projects-addcard .lane-add-input { flex: 1; min-width: 0; }
-.projects-addcard input[type='date'] { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
+.split-addcard { display: flex; gap: 8px; }
+.split-addcard .lane-add-input { flex: 1; min-width: 0; }
+.split-addcard input[type='date'] { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
 
-.projects-cards { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.split-cards { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 
-.projects-card {
+.split-card {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1329,12 +1332,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-radius: 8px;
 }
 
-.projects-card.s-done { opacity: 0.68; }
-.projects-card-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; }
-.projects-card-title { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.projects-card.s-done .projects-card-title { text-decoration: line-through; color: var(--text-faint); }
-.projects-card-est { font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
-.projects-card-day { padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: 12px; }
+.split-card.s-done { opacity: 0.68; }
+.split-card-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; }
+.split-card-title { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split-card.s-done .split-card-title { text-decoration: line-through; color: var(--text-faint); }
+.split-card-est { font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.split-card-day { padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: 12px; }
 
 /* ---------- settings extras ---------- */
 
@@ -1360,12 +1363,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 @media (max-width: 860px) {
-  .projects { grid-template-columns: minmax(0, 1fr); }
+  .split { grid-template-columns: minmax(0, 1fr); }
   .viewtab { padding: 5px 9px; }
 }
 
 @media (max-width: 700px) {
-  .board.is-day, .board.is-month, .board.is-projects { padding: 10px 12px 14px; }
+  .board.is-day, .board.is-month, .board.is-projects, .board.is-clients { padding: 10px 12px 14px; }
   /* One column of cards beside the clock; the calendar and the loose cards
      fall underneath rather than squeezing three columns onto a phone. */
   /* Wide enough for "08:00 AM" on one line, small enough not to cost the
@@ -1381,4 +1384,75 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .dayview-add { margin-left: 0; flex: 1 1 100%; }
   .viewtabs { order: 3; width: 100%; justify-content: space-between; }
   .viewtab { flex: 1; min-height: 34px; }
+}
+
+/* ---------- clients ---------- */
+
+/* The colour swatch and the name sit on one line with the actions, so a
+   client's identity is edited where it is read. */
+.split-detail-head .cat-colour { flex: none; }
+
+/* The headline numbers for one client. Auto-fit rather than a fixed count, so
+   five totals become two rows on a narrow panel instead of a scrollbar. */
+.totals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 8px;
+}
+
+.totals li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.totals-label {
+  font-size: 10.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.totals-value { font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.totals-value small { font-size: 11.5px; font-weight: 500; color: var(--text-faint); }
+.totals-value.is-done { color: var(--s-done); }
+
+/* ---------- the client filter ---------- */
+
+.clientfilter { position: relative; }
+.clientfilter > .ghost { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.clientfilter-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+.clientfilter-pop { width: 220px; padding: 8px; }
+
+.clientfilter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.clientfilter-row:hover { background: var(--surface-2); }
+.clientfilter-row input[type='checkbox'] { width: 15px; height: 15px; accent-color: var(--accent); flex: none; }
+.clientfilter-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clientfilter-pop .sync-actions { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line-soft); }
+
+@media (max-width: 700px) {
+  /* The button sits mid-toolbar on a phone rather than at the right edge, so
+     hanging the popover off its right corner pushes it off-screen. */
+  .clientfilter-pop { width: min(220px, calc(100vw - 24px)); left: 0; right: auto; }
+
+  /* Give the search a floor to shrink to, so a crowded toolbar wraps it onto
+     its own line instead of squeezing it down to a few characters. */
+  .topbar-tools .search { flex: 1 1 150px; min-width: 150px; }
 }

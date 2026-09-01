@@ -107,21 +107,69 @@ export function cardsIn(state: BoardState, lane: LaneId): Card[] {
   return (state.lanes[lane] ?? []).map((id) => state.cards[id]).filter(Boolean);
 }
 
-/** Every card on this project, newest day first, so a project reads as a plan
- *  rather than as whatever order the cards happen to sit in on the board. */
-export function cardsOfProject(state: BoardState, projectId: string): { card: Card; lane: LaneId }[] {
+/** Day order, with the backlog last rather than sorting before "b…". */
+function byLane(a: { lane: LaneId }, b: { lane: LaneId }): number {
+  const key = (lane: LaneId) => (lane === BACKLOG ? '￿' : lane);
+  return key(a.lane) < key(b.lane) ? -1 : key(a.lane) > key(b.lane) ? 1 : 0;
+}
+
+/** Walks every card on the board in lane order, so the callers below don't
+ *  each have to know that `lanes` is where a card's day actually lives. */
+function scan(state: BoardState, keep: (card: Card) => boolean): { card: Card; lane: LaneId }[] {
   const found: { card: Card; lane: LaneId }[] = [];
   for (const [lane, ids] of Object.entries(state.lanes)) {
     for (const id of ids) {
       const card = state.cards[id];
-      if (card?.projectId === projectId) found.push({ card, lane });
+      if (card && keep(card)) found.push({ card, lane });
     }
   }
-  return found.sort((a, b) => {
-    // The backlog sits after the scheduled days rather than before "b…".
-    const key = (lane: LaneId) => (lane === BACKLOG ? '￿' : lane);
-    return key(a.lane) < key(b.lane) ? -1 : key(a.lane) > key(b.lane) ? 1 : 0;
-  });
+  return found.sort(byLane);
+}
+
+/** Every card on this project, earliest day first, so a project reads as a plan
+ *  rather than as whatever order the cards happen to sit in on the board. */
+export function cardsOfProject(state: BoardState, projectId: string): { card: Card; lane: LaneId }[] {
+  return scan(state, (card) => card.projectId === projectId);
+}
+
+export function projectsOfClient(state: BoardState, clientId: string): Project[] {
+  return Object.values(state.projects)
+    .filter((project) => project.clients.includes(clientId))
+    .sort((a, b) => Number(a.archived) - Number(b.archived) || a.title.localeCompare(b.title));
+}
+
+/**
+ * A client's work: cards tagged with them, plus every card on their projects.
+ *
+ * The second half matters. A card created inside a project inherits its client
+ * tags, but one assigned to the project later does not — and either way a card
+ * on an Acme project is Acme's work. Counting only the tagged ones would quietly
+ * under-report what a client is costing you.
+ */
+export function cardsOfClient(state: BoardState, clientId: string): { card: Card; lane: LaneId }[] {
+  const theirs = new Set(projectsOfClient(state, clientId).map((project) => project.id));
+  return scan(
+    state,
+    (card) => card.clients.includes(clientId) || (!!card.projectId && theirs.has(card.projectId)),
+  );
+}
+
+/** What a client is worth and how much of it has been done. Value comes from
+ *  their projects; hours come from their cards, which is a wider net. */
+export function clientTotals(
+  state: BoardState,
+  clientId: string,
+): { value: number; projects: number; cards: number; done: number; planned: number; logged: number } {
+  const projects = projectsOfClient(state, clientId);
+  const cards = cardsOfClient(state, clientId);
+  return {
+    value: projects.filter((project) => !project.archived).reduce((sum, project) => sum + project.value, 0),
+    projects: projects.length,
+    cards: cards.length,
+    done: cards.filter(({ card }) => card.status === 'done').length,
+    planned: cards.reduce((sum, { card }) => sum + (card.status === 'done' ? 0 : card.estimate), 0),
+    logged: cards.reduce((sum, { card }) => sum + (card.status === 'done' ? card.estimate : 0), 0),
+  };
 }
 
 /** Drops a card into a lane at an index, removing it from wherever it was. */

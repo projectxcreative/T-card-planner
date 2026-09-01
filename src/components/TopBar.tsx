@@ -1,5 +1,6 @@
 import SyncBadge from './SyncBadge';
-import { VIEWS, VIEW_LABELS, type Settings, type ViewMode } from '../types';
+import ClientFilter from './ClientFilter';
+import { VIEWS, VIEW_LABELS, type Client, type Settings, type ViewMode } from '../types';
 import type { Sync } from '../sync';
 
 interface Props {
@@ -19,15 +20,20 @@ interface Props {
   canUndo: boolean;
   onUndo: () => void;
   searchRef: React.RefObject<HTMLInputElement | null>;
+  clients: Client[];
+  clientFilter: string[];
+  onClientFilter: (ids: string[]) => void;
   sync: Sync;
 }
 
 export default function TopBar(props: Props) {
-  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, overdueCount, onRollOver, canUndo, onUndo, searchRef, sync } = props;
+  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, overdueCount, onRollOver, canUndo, onUndo, searchRef, clients, clientFilter, onClientFilter, sync } = props;
 
-  // Projects aren't a stretch of time, so there is nothing for the arrows to
-  // step over while they're on screen.
-  const dated = view !== 'projects';
+  // Projects and clients aren't stretches of time, so there is nothing for the
+  // arrows to step over while they're on screen.
+  const dated = view !== 'projects' && view !== 'clients';
+  // Nor is there a board to narrow while one of them is up.
+  const filterable = dated;
   const stepName = view === 'day' ? 'day' : view === 'month' ? 'month' : 'week';
 
   return (
@@ -83,6 +89,8 @@ export default function TopBar(props: Props) {
             Roll over {overdueCount}
           </button>
         )}
+
+        {filterable && <ClientFilter clients={clients} value={clientFilter} onChange={onClientFilter} />}
 
         <input
           ref={searchRef}
