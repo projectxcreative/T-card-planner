@@ -83,7 +83,7 @@ import {
 } from './dates';
 import { summarise } from './cardText';
 import { useSync } from './sync';
-import { useM365, usePublishing } from './m365';
+import { effectiveConfig, useM365, usePublishing } from './m365';
 import { ConflictBar } from './components/SyncBadge';
 
 const SETTINGS_KEY = 'tcard-planner.settings.v1';
@@ -281,7 +281,10 @@ export default function App() {
 
   /* ---------- the calendar ---------- */
 
-  const m365 = useM365(settings.m365);
+  // The device's own registration if it has been given one, else whatever this
+  // build ships with — so a plain visitor has nothing to set up.
+  const m365Config = useMemo(() => effectiveConfig(settings.m365), [settings.m365]);
+  const m365 = useM365(m365Config);
   const calendarReady = m365.status === 'connected';
 
   // Whichever view is up decides the stretch of calendar worth holding.
@@ -305,7 +308,7 @@ export default function App() {
   }, [board.cards, board.lanes]);
 
   const patchCard = useCallback((id: string, patch: Partial<Card>) => dispatch({ type: 'update', id, patch }), []);
-  const publishing = usePublishing(settings.m365, calendarReady, publishable, patchCard);
+  const publishing = usePublishing(m365Config, calendarReady, publishable, patchCard);
 
   /* ---------- card actions ---------- */
 

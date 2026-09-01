@@ -237,35 +237,84 @@ into the day and month views so the plan is made with your meetings in front of
 you, and a card **writes** an entry only when you tick *Publish to calendar* on
 it.
 
-The sign-in happens in the browser, against your own tenant, using the
-authorization-code flow with **PKCE**. There is no client secret anywhere, and
-nothing about it reaches the Worker — the tokens live on the device that earned
-them, next to the board. Each device connects itself.
+The sign-in happens in the browser using the authorization-code flow with
+**PKCE**. There is no client secret anywhere, and nothing about it reaches the
+Worker — the tokens live on the device that earned them, next to the board. Each
+device connects itself.
 
 ### Connecting it
+
+If whoever deployed the board set it up with an app registration — see below —
+there is nothing to do. Open Settings, press **Connect Microsoft 365**, and
+Microsoft asks you to sign in and approve the two permissions the board needs:
+reading your profile, and reading and writing your calendar. You land back on
+the board connected, and the panel says which account it is.
+
+That is the whole of it for anyone using the board. The rest of this section is
+for whoever is deploying it.
+
+### Giving the board an app registration
+
+One registration, made once, and everybody who uses that deployment connects
+with a button. Without one, each person has to go and make their own first —
+fine for you, a wall for anyone else.
 
 In the [Entra admin centre](https://entra.microsoft.com) (or the Azure portal),
 under **App registrations**, add a registration:
 
-1. **Name** it whatever you like, and pick who can use it — *Accounts in this
-   organizational directory only* is right if the calendar is a work one.
-2. **Redirect URI:** choose the **Single-page application (SPA)** platform, and
-   give it the board's address with a trailing slash — `https://your.board/`.
-   The SPA platform is what makes PKCE work without a secret; the *Web* platform
-   will not do, it insists on one. Settings shows the exact value to paste.
-3. Under **API permissions**, add Microsoft Graph **delegated** permissions
+1. **Name** it whatever the board is called — the name shows on the consent
+   screen people see.
+2. **Supported account types.** *Accounts in this organizational directory
+   only* if the board is just for your own tenant, which keeps the consent
+   screen clean. Choose a multitenant option only if people outside your tenant
+   will use it, and read the caveats below before you do.
+3. **Redirect URI:** the **Single-page application (SPA)** platform, with the
+   board's address and a trailing slash — `https://your.board/`. Add
+   `http://localhost:5173/` as a second one for local development; a
+   registration can hold several. The SPA platform is what makes PKCE work
+   without a secret — the *Web* platform will not do, it insists on one.
+4. Under **API permissions**, add Microsoft Graph **delegated** permissions
    `Calendars.ReadWrite` and `User.Read`, then grant consent if your tenant
    requires an admin to.
-4. Copy the **Application (client) ID** from the overview page, and the
-   **Directory (tenant) ID** with it.
+5. Copy the **Application (client) ID** from the overview page.
 
-Then open Settings on the board, paste the client ID, put the tenant ID in the
-**Tenant** box (or leave it as `common` for a personal account), and press
-**Connect**. You'll be sent to Microsoft's login and back, and the panel will
-say which account it is.
+Then give it to the build. This is a **build-time** value — Vite substitutes it
+into the bundle, so it has to be set where the site is built, not on the Worker:
 
-Running locally? Add `http://localhost:5173/` as a second redirect URI on the
-same registration — a registration can hold several.
+```
+VITE_M365_CLIENT_ID=00000000-0000-0000-0000-000000000000
+VITE_M365_TENANT=common          # optional; `common` if unset
+```
+
+For a Cloudflare Workers build, those go in the build's environment variables in
+the dashboard. Locally, put them in `.env.local` — `.env.example` has both with
+their explanations, and `*.local` is already ignored by git.
+
+**The client id is not a secret.** A single-page app is a *public* client: the
+id is an identifier, and PKCE — a hash the browser mints per sign-in — is what
+proves the thing asking for tokens is the thing that started the login. Nothing
+secret is shipped, and none of this reaches the Worker; the tokens live on the
+device that earned them.
+
+Anyone who needs a different registration can still supply one per device, under
+**Use your own app registration** in the same Settings panel. A client id there
+overrides the shipped one, tenant and all; clearing it goes back to the built-in.
+With no registration shipped at all, that panel is open by default, because then
+it is the only way through.
+
+### What to expect from Microsoft
+
+Two things are worth knowing before you promise anyone a one-click connection:
+
+- **Some tenants don't let users consent to apps.** Where an admin has turned
+  user consent off, the first person to connect is told to ask an administrator,
+  who approves the app once for everybody. No approach avoids this — it is the
+  tenant's policy, not the app's.
+- **A multitenant app shows an "unverified" warning** on the consent screen
+  until you complete [publisher
+  verification](https://learn.microsoft.com/entra/identity-platform/publisher-verification-overview),
+  which needs a Microsoft Partner account. A single-tenant registration used
+  inside your own tenant doesn't show it.
 
 ### What publishing does
 
@@ -444,6 +493,7 @@ worker/index.ts        the Worker: /api/board over KV, and the built app
 worker/access.ts       verifies the Cloudflare Access login on every request
 worker/access.test.mjs signed-JWT checks for it — `npm test`
 wrangler.jsonc         Worker config — KV binding, assets, SPA fallback
+.env.example           build-time settings; the Microsoft 365 app registration
 src/
   App.tsx              board state, the four views, drag and drop, keyboard, undo
   sync.ts              pull/push, offline queueing, conflict detection, session

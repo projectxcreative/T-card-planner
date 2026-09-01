@@ -11,7 +11,7 @@ import {
   type Client,
   type Settings,
 } from '../types';
-import { redirectUri, type M365 } from '../m365';
+import { hasBuiltInApp, redirectUri, type M365 } from '../m365';
 
 interface Props {
   categories: Categories;
@@ -346,39 +346,11 @@ export default function SettingsDialog(props: Props) {
             <h3 className="settings-title">Microsoft 365 calendar</h3>
             <p className="settings-note">
               Reads your Outlook calendar into the day and month views, and writes an entry for any card you tick
-              “publish” on. Paste the Application (client) ID of an Entra ID app registration whose redirect URI is{' '}
-              <code>{redirectUri()}</code>, registered as a single-page application.
+              “publish” on.{' '}
+              {hasBuiltInApp
+                ? 'Connect and Microsoft will ask you to sign in and approve the two permissions it needs — reading your profile, and reading and writing your calendar.'
+                : 'This build ships without an app registration, so you will need to point it at one of your own below.'}
             </p>
-
-            <label className="settings-row">
-              <span>
-                Client ID
-                <span className="settings-hint">From the app registration's overview</span>
-              </span>
-              <input
-                type="text"
-                className="cat-label settings-wide"
-                value={settings.m365.clientId}
-                placeholder="00000000-0000-0000-0000-000000000000"
-                spellCheck={false}
-                onChange={(event) => onSettings({ m365: { ...settings.m365, clientId: event.target.value.trim() } })}
-              />
-            </label>
-
-            <label className="settings-row">
-              <span>
-                Tenant
-                <span className="settings-hint">Your tenant id or domain, or “common”</span>
-              </span>
-              <input
-                type="text"
-                className="cat-label settings-wide"
-                value={settings.m365.tenant}
-                placeholder="common"
-                spellCheck={false}
-                onChange={(event) => onSettings({ m365: { ...settings.m365, tenant: event.target.value.trim() } })}
-              />
-            </label>
 
             <div className="settings-row">
               <span>
@@ -387,8 +359,8 @@ export default function SettingsDialog(props: Props) {
                   {m365.status === 'connected'
                     ? m365.account || 'Signed in'
                     : m365.status === 'unconfigured'
-                      ? 'Add a client ID above first'
-                      : 'Sign in with your work account'}
+                      ? 'Add a client ID below first'
+                      : 'Sign in with your Microsoft account'}
                 </span>
               </span>
               {m365.status === 'connected' ? (
@@ -402,12 +374,55 @@ export default function SettingsDialog(props: Props) {
                   disabled={m365.status === 'unconfigured' || m365.status === 'connecting'}
                   onClick={m365.connect}
                 >
-                  {m365.status === 'connecting' ? 'Connecting…' : 'Connect'}
+                  {m365.status === 'connecting' ? 'Connecting…' : 'Connect Microsoft 365'}
                 </button>
               )}
             </div>
 
             {m365.error && <p className="settings-note is-error">{m365.error}</p>}
+
+            {/* Only worth opening if you are hosting this yourself, or your
+                tenant will not have the shipped app. Open by default when there
+                is nothing shipped, because then it is the only way through. */}
+            <details className="settings-more" open={!hasBuiltInApp}>
+              <summary>Use your own app registration</summary>
+              <p className="settings-note">
+                An Entra ID app registration, registered as a <strong>single-page application</strong> with{' '}
+                <code>{redirectUri()}</code> as a redirect URI, and delegated Microsoft Graph permissions{' '}
+                <code>Calendars.ReadWrite</code> and <code>User.Read</code>. Leave the client ID blank to go back to
+                the one this build ships with.
+              </p>
+
+              <label className="settings-row">
+                <span>
+                  Client ID
+                  <span className="settings-hint">From the app registration's overview</span>
+                </span>
+                <input
+                  type="text"
+                  className="cat-label settings-wide"
+                  value={settings.m365.clientId}
+                  placeholder={hasBuiltInApp ? 'Using the built-in one' : '00000000-0000-0000-0000-000000000000'}
+                  spellCheck={false}
+                  onChange={(event) => onSettings({ m365: { ...settings.m365, clientId: event.target.value.trim() } })}
+                />
+              </label>
+
+              <label className="settings-row">
+                <span>
+                  Tenant
+                  <span className="settings-hint">Your tenant id or domain, or “common”</span>
+                </span>
+                <input
+                  type="text"
+                  className="cat-label settings-wide"
+                  value={settings.m365.tenant}
+                  placeholder="common"
+                  spellCheck={false}
+                  onChange={(event) => onSettings({ m365: { ...settings.m365, tenant: event.target.value.trim() } })}
+                />
+              </label>
+            </details>
           </section>
 
           <section className="settings-section">
