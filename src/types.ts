@@ -95,7 +95,7 @@ export interface Project {
 /** Where a card opens: beside the board, or over it. */
 export type CardSurface = 'drawer' | 'modal';
 
-export const VIEWS = ['week', 'day', 'month', 'projects'] as const;
+export const VIEWS = ['week', 'day', 'month', 'projects', 'clients'] as const;
 export type ViewMode = (typeof VIEWS)[number];
 
 export const VIEW_LABELS: Record<ViewMode, string> = {
@@ -103,6 +103,7 @@ export const VIEW_LABELS: Record<ViewMode, string> = {
   day: 'Day',
   month: 'Month',
   projects: 'Projects',
+  clients: 'Clients',
 };
 
 /** What the app needs to talk to a Microsoft 365 tenant. Both halves come off
