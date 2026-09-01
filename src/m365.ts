@@ -155,6 +155,35 @@ export function redirectUri(): string {
   return `${window.location.origin}/`;
 }
 
+/**
+ * The app registration this build ships with, if it was given one.
+ *
+ * With it, connecting a calendar is a button: the visitor signs in to
+ * Microsoft, approves the two permissions, and comes back. Without it, each
+ * person has to go and create an app registration of their own first — fine
+ * for whoever set the board up, a wall for anyone else.
+ *
+ * The value is an identifier, not a credential. See `vite-env.d.ts`.
+ */
+const BUILT_IN: M365Config = {
+  clientId: (import.meta.env.VITE_M365_CLIENT_ID ?? '').trim(),
+  tenant: (import.meta.env.VITE_M365_TENANT ?? '').trim() || 'common',
+};
+
+/** True when this build can connect a calendar with no setup at all. */
+export const hasBuiltInApp = Boolean(BUILT_IN.clientId);
+
+/**
+ * Which registration to actually use.
+ *
+ * An override is all or nothing: give a client id of your own and your tenant
+ * goes with it. Half of one registration and half of another would only ever
+ * be a mistake, so it isn't a state you can get into.
+ */
+export function effectiveConfig(own: M365Config): M365Config {
+  return own.clientId.trim() ? own : BUILT_IN;
+}
+
 export function isConfigured(config: M365Config): boolean {
   return Boolean(config.clientId.trim());
 }
