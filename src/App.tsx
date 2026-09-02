@@ -87,7 +87,6 @@ import { effectiveConfig, useM365, usePublishing } from './m365';
 import { ConflictBar } from './components/SyncBadge';
 
 const SETTINGS_KEY = 'tcard-planner.settings.v1';
-const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const HISTORY_LIMIT = 40;
 
 /** Pointer position beats bounding-box overlap on a board this wide: a card is
@@ -244,15 +243,6 @@ export default function App() {
   // down it land on runs rather than on every other row.
   const projectList = useMemo(() => Object.values(board.projects).sort(byStage), [board.projects]);
 
-  const overdue = useMemo(() => {
-    const lanes = Object.keys(board.lanes).filter((lane) => DAY_KEY.test(lane) && isPast(lane)).sort();
-    const count = lanes.reduce(
-      (sum, lane) => sum + (board.lanes[lane] ?? []).filter((id) => board.cards[id]?.status !== 'done').length,
-      0,
-    );
-    return { lanes, count };
-  }, [board]);
-
   const openCard: Card | null = openId ? board.cards[openId] ?? null : null;
   const openLane = openCard ? laneOf(board, openCard.id) ?? BACKLOG : BACKLOG;
   const activeCard = activeId ? board.cards[activeId] ?? null : null;
@@ -341,15 +331,6 @@ export default function App() {
     snapshot();
     dispatch({ type: 'resetCategories' });
   }, [snapshot]);
-
-  const rollOver = useCallback(() => {
-    if (overdue.count === 0) return;
-    const plural = overdue.count === 1 ? 'card' : 'cards';
-    if (!window.confirm(`Move ${overdue.count} unfinished ${plural} from past days to today?`)) return;
-    snapshot();
-    dispatch({ type: 'rollOver', from: overdue.lanes, to: todayKey() });
-    setFocus(todayKey());
-  }, [overdue, snapshot]);
 
   /* ---------- projects and clients ---------- */
 
@@ -610,8 +591,6 @@ export default function App() {
             settings={settings}
             onSettings={(patch) => setSettings((current) => ({ ...current, ...patch }))}
             onOpenSettings={() => setShowSettings(true)}
-            overdueCount={overdue.count}
-            onRollOver={rollOver}
             canUndo={past.length > 0}
             onUndo={undo}
             searchRef={searchRef}

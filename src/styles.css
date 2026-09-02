@@ -16,6 +16,11 @@
   --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
   --shadow-2: 0 8px 24px rgba(16, 24, 40, 0.14);
   --radius: 8px;
+  /* How wide the app is allowed to get before it stops growing and centres.
+     Past this, more pixels stop being more room and start being a longer
+     sideways glance — six columns strung across a 4K panel are further apart
+     than they are useful. */
+  --shell-max: 2400px;
   /* Ink on a solid accent fill. */
   --head-ink: #ffffff;
 
@@ -100,20 +105,32 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- top bar ---------- */
 
 .topbar {
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+/* The bar paints edge to edge; its contents line up with the board. */
+.topbar-inner {
   display: flex;
   align-items: center;
   gap: 20px;
   flex-wrap: wrap;
-  padding: 10px 16px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
+  max-width: var(--shell-max);
+  margin-inline: auto;
 }
 
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 650; letter-spacing: -0.01em; }
 
 .brand-mark {
   width: 16px; height: 16px; border-radius: 3px;
-  background: linear-gradient(180deg, var(--accent) 0 42%, var(--warn) 42% 100%);
+  background: linear-gradient(140deg, var(--accent), var(--warn), var(--accent));
+  background-size: 220% 220%;
+  animation: brand 9s ease-in-out infinite;
+}
+
+@keyframes brand {
+  50% { background-position: 100% 100%; }
 }
 
 .brand-name { white-space: nowrap; }
@@ -158,6 +175,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   overflow-y: hidden;
   padding: 14px 16px 18px;
   min-height: 0;
+  /* Centred once the week stops needing the room. Below the cap this is a
+     no-op, so ordinary screens are untouched. */
+  width: 100%;
+  max-width: var(--shell-max);
+  margin-inline: auto;
 }
 
 .lane {
@@ -165,7 +187,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   flex-direction: column;
   flex: 1 0 210px;
   min-width: 200px;
-  max-width: 340px;
+  /* Enough to let a five-day week fill a wide board without a card growing
+     so wide that its title stops being a glance. */
+  max-width: 400px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -178,10 +202,32 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-style: dashed;
 }
 
+.lane { position: relative; }
+
+/* Today gets a slowly drifting accent rule along its top edge — enough to find
+   the column from across the room, not enough to keep catching your eye. */
 .lane.is-today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.lane.is-today::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  border-radius: 10px 10px 0 0;
+  background: linear-gradient(90deg, var(--accent), var(--c-teal), var(--accent));
+  background-size: 200% 100%;
+  animation: drift 7s linear infinite;
+}
+
+@keyframes drift {
+  to { background-position: -200% 0; }
+}
 .lane.is-past .lane-head { opacity: 0.62; }
 .lane.is-weekend { background: var(--surface-2); }
-.lane.is-over { background: var(--accent-soft); }
+.lane.is-over {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent), 0 8px 30px -12px var(--accent);
+}
 
 .lane-head {
   display: flex;
@@ -204,8 +250,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 .lane-load { height: 3px; margin: 0 12px 8px; background: var(--line-soft); border-radius: 2px; overflow: hidden; }
-.lane-load span { display: block; height: 100%; background: var(--s-done); transition: width 160ms; }
-.lane-load.is-over-capacity span { background: var(--s-blocked); }
+.lane-load span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--s-done) 70%, var(--surface)), var(--s-done));
+  transition: width 260ms cubic-bezier(0.2, 0, 0, 1), background 200ms;
+}
+.lane-load.is-over-capacity span {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--s-blocked) 70%, var(--surface)), var(--s-blocked));
+}
 
 .lane-drop {
   display: flex;
@@ -231,6 +285,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: transparent; border: 0; border-radius: 6px;
   padding: 6px 8px; text-align: left; color: var(--text-faint); cursor: pointer;
 }
+.lane-add { opacity: 0.55; transition: opacity 140ms, background 140ms, color 140ms; }
+.lane:hover .lane-add, .lane:focus-within .lane-add { opacity: 1; }
 .lane-add:hover { background: var(--surface-2); color: var(--text); }
 
 .lane-add-input {
@@ -269,7 +325,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   transition: box-shadow 120ms, transform 120ms;
 }
 
-.tcard-slot:hover .tcard { box-shadow: var(--shadow-2); }
+.tcard { animation: settle 200ms cubic-bezier(0.2, 0, 0, 1) both; }
+
+@keyframes settle {
+  from { opacity: 0; transform: translateY(-4px) scale(0.99); }
+}
+
+.tcard-slot:hover .tcard { box-shadow: var(--shadow-2); transform: translateY(-1px); }
+.tcard-slot:active .tcard { transform: translateY(0) scale(0.995); }
 .tcard.is-dragging { box-shadow: var(--shadow-2); transform: rotate(1.4deg); }
 .tcard.is-dimmed { opacity: 0.32; }
 
@@ -357,6 +420,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- drawer ---------- */
 
 .drawer {
+  animation: slide-in 200ms cubic-bezier(0.2, 0, 0, 1) both;
   grid-row: 4;
   grid-column: 2;
   display: flex;
@@ -373,6 +437,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   gap: 8px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line-soft);
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(14px); }
 }
 
 .drawer-swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--c); flex: none; }
@@ -608,9 +676,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
   justify-content: center;
   padding: 20px;
   background: rgba(8, 12, 18, 0.45);
+  /* The board stays legible behind the dialog, just out of focus. */
+  backdrop-filter: blur(3px);
+  animation: fade 140ms ease-out both;
+}
+
+@keyframes fade {
+  from { opacity: 0; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
 }
 
 .modal {
+  animation: rise 180ms cubic-bezier(0.2, 0, 0, 1) both;
   display: flex;
   flex-direction: column;
   width: min(520px, 100%);
@@ -925,6 +1005,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- day view ---------- */
 
 .board.is-day, .board.is-month, .board.is-projects, .board.is-clients { display: block; overflow: auto; }
+.board.is-day > *, .board.is-month > *, .board.is-projects > *, .board.is-clients > * {
+  max-width: var(--shell-max);
+  margin-inline: auto;
+}
 
 .dayview { display: flex; flex-direction: column; gap: 12px; min-height: 100%; }
 
@@ -1530,3 +1614,95 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .settings-more[open] > summary::before { content: '▾ '; }
 .settings-more > summary:hover { color: var(--text); }
 .settings-more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* ---------- the weekend toggle ---------- */
+
+/* A checkbox that behaves like the toolbar around it: a button, so it keeps
+   the same height and hover as its neighbours, with a box drawn on the front. */
+.toggle { display: inline-flex; align-items: center; gap: 7px; }
+
+.toggle-box {
+  width: 13px; height: 13px;
+  flex: none;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  opacity: 0.6;
+  position: relative;
+  transition: opacity 120ms, background 120ms;
+}
+
+.toggle.is-on .toggle-box { opacity: 1; background: currentColor; }
+
+/* The tick is drawn rather than typed, so it inherits the button's colour and
+   scales with it instead of arriving as a font glyph that might not. */
+.toggle.is-on .toggle-box::after {
+  content: '';
+  position: absolute;
+  left: 3.5px; top: 0.5px;
+  width: 3px; height: 7px;
+  border: solid var(--surface);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* ---------- finishing touches ---------- */
+
+::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+
+/* Thin, quiet scrollbars — the board has a lot of them. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: content-box; }
+
+/* Buttons acknowledge a press. */
+.ghost:active:not(:disabled), .viewtab:active, .seg:active { transform: translateY(0.5px); }
+
+/* The active view tab slides rather than blinks. */
+.viewtab { transition: background 160ms, color 160ms, box-shadow 160ms; }
+
+/* Chips and pills lift very slightly when they are something you can press. */
+.chip { transition: transform 120ms, background 120ms, border-color 120ms, color 120ms; }
+button.chip:hover { transform: translateY(-1px); }
+
+/* Month cells and project rows answer the pointer. */
+.monthcell { transition: background 140ms, box-shadow 140ms, border-color 140ms; }
+.monthchip { transition: background 120ms, transform 120ms; }
+.monthchip:hover { transform: translateX(1px); }
+.split-item { transition: background 140ms, border-color 140ms, transform 120ms; }
+.split-item:hover { transform: translateX(2px); }
+
+/* A timeline slot under the pointer comes forward a little. */
+.slot { transition: box-shadow 140ms, filter 140ms; }
+.slot:hover { box-shadow: var(--shadow-2); filter: saturate(1.08); }
+.slot.is-dragging { transition: none; }
+
+/**
+ * Everything above is decoration. Anyone who has asked their system for less
+ * movement gets the same app without it — including the drifting rules, which
+ * never stop on their own and are the worst offenders for anyone who finds
+ * motion difficult.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .tcard-slot:hover .tcard,
+  button.chip:hover,
+  .monthchip:hover,
+  .split-item:hover { transform: none; }
+}

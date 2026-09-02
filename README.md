@@ -43,8 +43,12 @@ week rather than back at today.
 ### Week
 
 One column per weekday, plus a **Backlog** column on the left for anything not
-yet given a day. Weekends are hidden until you turn them on in Settings. Today's
-column is outlined, and the board opens scrolled to it.
+yet given a day. Today's column is outlined and wears a drifting accent rule
+along its top edge, and the board opens scrolled to it.
+
+**Weekends** is a tickbox next to the week arrows — Saturday and Sunday are a
+property of the week you're looking at, so it sits with the week rather than
+behind the gear. It applies to the month too, and follows you between them.
 
 Each day column ends with the hours **logged** on it — the sized cards that got
 finished. The count at the top is what's still ahead of you; the total at the
@@ -186,8 +190,6 @@ and it's the thing you read the board by from across the room.
 - **Start** puts the card at a time of day, which is where the day view draws
   it. Dragging it about on that timeline is usually easier than typing one.
 - **Publish to calendar** mirrors the card into Microsoft 365 — see below.
-- **Roll over** appears when past days still hold unfinished cards, and moves
-  them all to today in one go.
 
 ## Settings
 
@@ -221,8 +223,9 @@ view does all of this too, alongside what each client's work adds up to.
   makes a column of cards shorter and the week easier to scan.
 - **Open a card in** — a sidebar beside the board, or a window over it.
 
-**The week.** Whether Saturday and Sunday get columns, how many hours you
-count as a full day, the hours the day view's timeline covers, and the theme.
+**The week.** How many hours you count as a full day, the hours the day view's
+timeline covers, and the theme. Whether the weekend gets columns is a tickbox on
+the board itself.
 
 **Microsoft 365 calendar.** Covered below.
 
@@ -338,11 +341,29 @@ says so rather than just greying out.
 | `N` | New card on today — or on the day you're looking at, in Day view |
 | `/` | Focus search |
 | `Esc` | Close the card panel or settings, or cancel a drag |
-| `⌘Z` / `Ctrl+Z` | Undo the last move, delete or roll-over |
+| `⌘Z` / `Ctrl+Z` | Undo the last move or delete |
 | `Enter` | Open the focused card |
 
 Search and the client filter both dim what doesn't match rather than hiding it,
 so the shape of the week stays put while you look.
+
+## On a big screen
+
+The app stops growing at 2400px and centres what's left. Past that, more pixels
+stop being more room and start being a longer sideways glance — six columns
+strung across the full width of a 4K panel are further apart than they are
+useful. Columns themselves stop at 400px for the same reason: a T-card wider
+than that is no longer something you read at a glance.
+
+Below that width nothing changes, so an ordinary laptop is exactly as it was.
+
+## Motion
+
+There is a small amount of it: cards settle in rather than appearing, dialogs
+rise, the drawer slides, today's rule drifts, and things lift a little under the
+pointer. All of it is decoration, and all of it goes away for anyone whose system
+asks for reduced motion — including the drifting rule, which never stops on its
+own and is the worst of them for anyone who finds movement difficult.
 
 ## On a phone
 
