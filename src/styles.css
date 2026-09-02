@@ -1764,3 +1764,168 @@ button.chip:hover { transform: translateY(-1px); }
   margin-top: 5px;
   background: var(--line-soft);
 }
+
+/* ---------- the draft skin ---------- */
+
+/**
+ * After Kaliber10000 (k10k.net, 1998–2011), whose signature was a page broken
+ * into a mathematical structure of rectangles by hairline rules — tight
+ * uppercase micro-type, numbered modules, everything squared and measured.
+ *
+ * It is a skin rather than a theme, and the two are separate axes: a theme
+ * swaps the palette, a skin swaps shape and type, and either skin wears either
+ * theme. Nothing below touches a colour token, so dark keeps working for free.
+ *
+ * Everything here is borders, sizes, letter-spacing and font-variant — plain
+ * CSS with no browser caveats. `:is()` is used for the radius sweep because it
+ * carries the specificity of its arguments, so these rules beat the base ones
+ * without a pile of `!important`; `:where()` would lose.
+ */
+
+:root[data-skin='draft'] {
+  /* Two radii in place of the thirteen the default skin accumulated: a
+     structural edge, and a softer one for the things you press. */
+  --radius: 2px;
+  --radius-sharp: 2px;
+  --radius-soft: 4px;
+
+  /* Four steps, all on whole pixels. Half-pixel sizes are what stop small type
+     landing on the pixel grid, and small type is most of this design. */
+  --t-micro: 11px;
+  --t-body: 12px;
+  --t-head: 15px;
+  --t-title: 19px;
+
+  /* Figures that line up in a column. Reserved for measured things — times,
+     estimates, counts — never for prose. */
+  --font-data: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* ---- everything squares off ---- */
+
+:root[data-skin='draft'] :is(
+  .lane, .tcard, .modal, .lane-empty, .lane-add, .lane-add-input, .lane-count,
+  .monthcell, .monthchip, .monthchip-title, .split-item, .slot, .calentry,
+  .calchip, .search, .segmented, .ghost, .rt, .rt-btn, .money-input,
+  .clientfilter, .clientfilter-row, .quick-days, .cat-label, .field-label
+) { border-radius: var(--radius-sharp); }
+
+:root[data-skin='draft'] :is(.pill, .chip, .viewtab, .seg) {
+  border-radius: var(--radius-soft);
+}
+
+/* ---- the board becomes one ruled grid ---- */
+
+/* The columns stop being separate rounded panels and butt together, their
+   borders collapsing into the single hairlines that divide the sheet. */
+:root[data-skin='draft'] .board { gap: 0; counter-reset: lane; }
+:root[data-skin='draft'] .lane + .lane { margin-left: -1px; }
+
+/* A dashed edge reads as a torn one where every other border is a ruled line,
+   so the backlog is told apart by its fill and its 00 instead. */
+:root[data-skin='draft'] .lane.is-backlog { border-style: solid; }
+
+/* A column with something to say draws over its neighbours' shared edge. */
+:root[data-skin='draft'] .lane.is-today { z-index: 1; }
+:root[data-skin='draft'] .lane.is-over { z-index: 2; }
+
+/* ---- numbered, letterspaced column heads ---- */
+
+:root[data-skin='draft'] .lane:not(.is-backlog) { counter-increment: lane; }
+
+:root[data-skin='draft'] .lane-head {
+  padding: 7px 10px 6px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+:root[data-skin='draft'] .lane-title {
+  font-size: var(--t-body);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* Uppercase and letterspaced, "Backlog" no longer fits beside its subtitle,
+     and a head that wraps to two lines puts that column's rule half a line
+     below its neighbours' — which is the one thing this grid cannot have. The
+     subtitle already truncates, so it is the part that gives. */
+  white-space: nowrap;
+}
+
+:root[data-skin='draft'] .lane:not(.is-backlog) .lane-title::before {
+  content: counter(lane, decimal-leading-zero) ' / ';
+  font-family: var(--font-data);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-faint);
+}
+
+/* The backlog is the column before the week starts, so it is numbered 00. */
+:root[data-skin='draft'] .lane.is-backlog .lane-title::before {
+  content: '00 / ';
+  font-family: var(--font-data);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-faint);
+}
+
+:root[data-skin='draft'] .lane-sub,
+:root[data-skin='draft'] .lane-stats { font-size: var(--t-micro); }
+
+/* ---- measured things get measured figures ---- */
+
+:root[data-skin='draft'] :is(
+  .lane-hours, .lane-count, .lane-foot-value, .lane-cal-time,
+  .tcard-time, .tcard-est, .money, .slot-time, .monthcell-day, .monthcell-logged
+) {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+:root[data-skin='draft'] .lane-foot { font-size: var(--t-micro); }
+:root[data-skin='draft'] .lane-divider { font-size: 10px; }
+:root[data-skin='draft'] .chip { font-size: var(--t-micro); }
+
+/* ---- the cards flatten ---- */
+
+/* A drop shadow is a lit surface floating over another; this design has no
+   light in it. The card is held by its own hairline instead, tinted by the
+   category so the column still reads as colour from a distance. */
+:root[data-skin='draft'] .tcard {
+  box-shadow: none;
+  border: 1px solid color-mix(in srgb, var(--c) 60%, var(--line));
+}
+
+:root[data-skin='draft'] .lane-drop { gap: 6px; padding: 0 8px 8px; }
+
+/* Hover and drag answer in register — a hard ring and a lift of nothing,
+   rather than the default skin's shadow, rise and 1.4° tilt. */
+:root[data-skin='draft'] .tcard-slot:hover .tcard {
+  box-shadow: 0 0 0 1px var(--text-dim);
+  transform: none;
+}
+
+:root[data-skin='draft'] .tcard.is-dragging {
+  box-shadow: 0 0 0 1px var(--accent);
+  transform: none;
+}
+
+/* ---- the quiet flourishes come off ---- */
+
+/* Today keeps its rule, but a solid one: a gradient drifting under a ruled
+   grid is the one thing on the board that could not be drawn with a pen. */
+:root[data-skin='draft'] .lane.is-today::before {
+  height: 2px;
+  border-radius: 0;
+  background: var(--accent);
+  animation: none;
+}
+
+:root[data-skin='draft'] :is(.lane-load, .lane-load span) { border-radius: 0; }
+:root[data-skin='draft'] .lane-load { margin: 0 10px 8px; }
+:root[data-skin='draft'] .lane-load span { background: var(--s-done); }
+:root[data-skin='draft'] .lane-load.is-over-capacity span { background: var(--s-blocked); }
+
+/* The chips stop being lozenges and the pointer stops nudging them about. */
+:root[data-skin='draft'] button.chip:hover { transform: none; }
+:root[data-skin='draft'] .monthchip:hover { transform: none; }
+:root[data-skin='draft'] .split-item:hover { transform: none; }

@@ -182,6 +182,7 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     document.documentElement.dataset.theme = settings.theme;
+    document.documentElement.dataset.skin = settings.skin;
   }, [settings]);
 
   /* ---------- derived ---------- */
