@@ -1706,3 +1706,63 @@ button.chip:hover { transform: translateY(-1px); }
   .monthchip:hover,
   .split-item:hover { transform: none; }
 }
+
+/* ---------- the calendar strip on a day column ---------- */
+
+/* What else is on that day, above the cards. It has to be readable and it has
+   to stay out of the way, which mostly means: no borders, no background, and
+   small enough that the eye passes over it unless it goes looking. */
+.lane-cal {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.lane-cal-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.lane-cal-time {
+  flex: none;
+  /* Wide enough for a locale's longest short time — "09:30 AM" — which is
+     also enough for "All day", so every subject starts on the same line. */
+  min-width: 4.6em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* The subject is the part worth reading, so it gets the room and the ink. */
+.lane-cal-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Free and tentative entries are softer still — they are on the calendar, but
+   they are not necessarily a claim on the day. */
+.lane-cal-row.is-soft { opacity: 0.62; font-style: italic; }
+
+.lane-cal-more {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.lane-cal-more:hover { color: var(--accent); text-decoration: underline; }
+
+/* A quiet rule under the strip, so the cards below start cleanly. */
+.lane-cal::after {
+  content: '';
+  height: 1px;
+  margin-top: 5px;
+  background: var(--line-soft);
+}

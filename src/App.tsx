@@ -668,6 +668,7 @@ export default function App() {
                     isPast={isPast(day)}
                     isWeekend={isWeekend(day)}
                     capacity={settings.capacity}
+                    events={m365.events.get(day)}
                     onOpen={setOpenId}
                     onQuickAdd={quickAdd}
                     onOpenDay={openDay}
