@@ -543,6 +543,18 @@ like it belongs to the logo in the corner. None of it is fixed: every category
 and client colour is yours to change in Settings, and doing so leaves the mark
 alone.
 
+The screenshots above come from the same place rather than from someone's real
+board: `scripts/screenshots.mjs` serves the built app, writes a demo week into
+it — a full day, an empty one, a done pile, a blocked card, a backlog, and
+projects and clients behind them that add up — then shoots each view at the
+size the README wants it. So the pictures can be caught up with a recolour in
+one command:
+
+```bash
+npm run build
+npm i -D playwright-core && node scripts/screenshots.mjs
+```
+
 ## Layout
 
 ```
@@ -553,6 +565,7 @@ wrangler.jsonc         Worker config — KV binding, assets, SPA fallback
 .env.example           build-time settings; the Microsoft 365 app registration
 public/logo.svg        the mark: the favicon, and the source for the app icons
 scripts/icons.mjs      renders it onto the PWA, maskable and Apple icons
+scripts/screenshots.mjs  rebuilds the docs/ screenshots from a demo board
 src/
   App.tsx              board state, the four views, drag and drop, keyboard, undo
   sync.ts              pull/push, offline queueing, conflict detection, session
