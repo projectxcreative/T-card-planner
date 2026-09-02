@@ -14,7 +14,10 @@ import {
 import { useCategories } from '../categories';
 import { useLookups } from '../lookups';
 import { formatEstimate } from '../cardText';
-import { formatDayNumber, todayKey } from '../dates';
+import { formatDayNumber, formatMonthKey, monthChoices, todayKey } from '../dates';
+
+/** A year either side is enough to bill late or bill ahead. */
+const MONTH_CHOICES = monthChoices(12, 12);
 
 const RichText = lazy(() => import('./RichText'));
 const DESCRIPTION_DEBOUNCE_MS = 300;
@@ -254,6 +257,26 @@ export default function ProjectsView(props: Props) {
 
                 <ValueField project={active} onPatch={onPatch} />
 
+                <label className="field">
+                  <span className="field-label">Invoice month</span>
+                  <select
+                    value={active.invoiceMonth ?? ''}
+                    onChange={(event) => onPatch(active.id, { invoiceMonth: event.target.value || null })}
+                  >
+                    <option value="">Not yet</option>
+                    {MONTH_CHOICES.map((key) => (
+                      <option key={key} value={key}>
+                        {formatMonthKey(key)}
+                      </option>
+                    ))}
+                    {active.invoiceMonth && !MONTH_CHOICES.includes(active.invoiceMonth) && (
+                      <option value={active.invoiceMonth}>{formatMonthKey(active.invoiceMonth)}</option>
+                    )}
+                  </select>
+                </label>
+              </div>
+
+              <div className="field-row">
                 <label className="field">
                   <span className="field-label">Category</span>
                   <span className={`picker c-${active.colour}`}>

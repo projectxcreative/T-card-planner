@@ -26,9 +26,11 @@ import DayView from './components/DayView';
 import MonthView from './components/MonthView';
 import ProjectsView from './components/ProjectsView';
 import ClientsView from './components/ClientsView';
+import BillingView from './components/BillingView';
 import { CardFace } from './components/TCard';
 import type { Action } from './store';
 import {
+  billingMonths,
   byStage,
   cardsIn,
   cardsOfClient,
@@ -416,6 +418,7 @@ export default function App() {
   );
 
   const projectCards = useCallback((projectId: string) => cardsOfProject(board, projectId), [board]);
+  const months = useMemo(() => billingMonths(board), [board]);
   const clientProjects = useCallback((clientId: string) => projectsOfClient(board, clientId), [board]);
   const clientCards = useCallback((clientId: string) => cardsOfClient(board, clientId), [board]);
   const clientSums = useCallback((clientId: string) => clientTotals(board, clientId), [board]);
@@ -725,6 +728,17 @@ export default function App() {
                 onOpenCard={setOpenId}
                 onAddCard={addProjectCard}
                 onMoveCard={moveCard}
+              />
+            </main>
+          )}
+
+          {view === 'billing' && (
+            <main className="board is-billing">
+              <BillingView
+                months={months}
+                clients={board.clients}
+                onMonth={(id, invoiceMonth) => patchProject(id, { invoiceMonth })}
+                onOpenProject={openProjectFrom}
               />
             </main>
           )}

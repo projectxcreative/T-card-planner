@@ -131,3 +131,30 @@ export function graphDateTime(key: string, minutes: number): string {
 export function minutesOfDay(date: Date): number {
   return date.getHours() * 60 + date.getMinutes();
 }
+
+/* ---------- invoice months ---------- */
+
+/** `YYYY-MM` — the key a project's invoice month is stored under. */
+export function monthKeyOf(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
+}
+
+export function thisMonthKey(): string {
+  return monthKeyOf(new Date());
+}
+
+/** `2026-09` -> `September 26`, which is how the months read on an invoice. */
+const invoiceMonth = new Intl.DateTimeFormat(undefined, { month: 'long', year: '2-digit' });
+
+export function formatMonthKey(key: string): string {
+  const [y, m] = key.split('-').map(Number);
+  return invoiceMonth.format(new Date(y, m - 1, 1));
+}
+
+/** Months either side of this one, for picking which to bill a job in. */
+export function monthChoices(back: number, forward: number): string[] {
+  const now = new Date();
+  return Array.from({ length: back + forward + 1 }, (_, i) =>
+    monthKeyOf(new Date(now.getFullYear(), now.getMonth() - back + i, 1)),
+  );
+}
