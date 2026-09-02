@@ -89,7 +89,6 @@ export type Action =
   | { type: 'delete'; id: string }
   | { type: 'duplicate'; id: string }
   | { type: 'move'; id: string; lane: LaneId; index?: number }
-  | { type: 'rollOver'; from: LaneId[]; to: LaneId }
   | { type: 'category'; id: CategoryId; patch: Partial<Category> }
   | { type: 'resetCategories' }
   | { type: 'addProject'; project: Project }
@@ -301,17 +300,6 @@ export function reducer(state: BoardState, action: Action): BoardState {
       const index = action.index ?? (card.status === 'done' ? undefined : firstDoneIndex(state, action.lane));
       const next = { ...state, lanes: place(state.lanes, action.id, action.lane, index) };
       return sameArrangement(state, next) ? state : next;
-    }
-
-    case 'rollOver': {
-      // Carry everything unfinished from the given lanes to the target lane,
-      // appending in the order it was originally planned.
-      let lanes = state.lanes;
-      const moving = action.from
-        .filter((lane) => lane !== action.to)
-        .flatMap((lane) => (lanes[lane] ?? []).filter((id) => state.cards[id]?.status !== 'done'));
-      for (const id of moving) lanes = place(lanes, id, action.to, firstDoneIndex({ ...state, lanes }, action.to));
-      return moving.length > 0 ? { ...state, lanes } : state;
     }
 
     case 'category': {

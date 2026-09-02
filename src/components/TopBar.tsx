@@ -15,8 +15,6 @@ interface Props {
   settings: Settings;
   onSettings: (patch: Partial<Settings>) => void;
   onOpenSettings: () => void;
-  overdueCount: number;
-  onRollOver: () => void;
   canUndo: boolean;
   onUndo: () => void;
   searchRef: React.RefObject<HTMLInputElement | null>;
@@ -27,17 +25,20 @@ interface Props {
 }
 
 export default function TopBar(props: Props) {
-  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, overdueCount, onRollOver, canUndo, onUndo, searchRef, clients, clientFilter, onClientFilter, sync } = props;
+  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, canUndo, onUndo, searchRef, clients, clientFilter, onClientFilter, sync } = props;
 
   // Projects and clients aren't stretches of time, so there is nothing for the
   // arrows to step over while they're on screen.
   const dated = view !== 'projects' && view !== 'clients';
   // Nor is there a board to narrow while one of them is up.
   const filterable = dated;
+  // Only the week and the month draw columns the weekend could be one of.
+  const showsWeekend = view === 'week' || view === 'month';
   const stepName = view === 'day' ? 'day' : view === 'month' ? 'month' : 'week';
 
   return (
     <header className="topbar">
+     <div className="topbar-inner">
       <div className="brand">
         <span className="brand-mark" aria-hidden="true" />
         <span className="brand-name">T-Card Planner</span>
@@ -70,6 +71,19 @@ export default function TopBar(props: Props) {
             ›
           </button>
           <span className="weekrange">{rangeLabel}</span>
+
+          {showsWeekend && (
+            <button
+              type="button"
+              className={settings.includeWeekend ? 'ghost accent toggle is-on' : 'ghost toggle'}
+              aria-pressed={settings.includeWeekend}
+              onClick={() => onSettings({ includeWeekend: !settings.includeWeekend })}
+              title={settings.includeWeekend ? 'Hide Saturday and Sunday' : 'Show Saturday and Sunday'}
+            >
+              <span className="toggle-box" aria-hidden="true" />
+              Weekends
+            </button>
+          )}
         </div>
       )}
 
@@ -83,12 +97,6 @@ export default function TopBar(props: Props) {
         >
           ↶ Undo
         </button>
-
-        {overdueCount > 0 && (
-          <button type="button" className="ghost accent" onClick={onRollOver} title="Move unfinished cards from past days to today">
-            Roll over {overdueCount}
-          </button>
-        )}
 
         {filterable && <ClientFilter clients={clients} value={clientFilter} onChange={onClientFilter} />}
 
@@ -129,6 +137,7 @@ export default function TopBar(props: Props) {
 
         <SyncBadge sync={sync} />
       </div>
+     </div>
     </header>
   );
 }
