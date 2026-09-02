@@ -35,6 +35,7 @@ import {
   cardsOfProject,
   clientTotals,
   projectsOfClient,
+  strandedEvents,
   laneOf,
   load,
   newCard,
@@ -158,7 +159,24 @@ export default function App() {
   useCategoryColours(board.categories);
 
   // localStorage stays the local copy of record; the Worker keeps devices level.
-  const adoptRemote = useCallback((state: BoardState) => dispatch({ type: 'replace', state }), []);
+  const latestBoard = useRef(board);
+  latestBoard.current = board;
+
+  /**
+   * Swapping the whole board out strands every entry the old one published, so
+   * the ids are carried across before the old board is let go of — along with
+   * anything already queued on it. The incoming board has a queue of its own
+   * (usually empty), and letting it simply replace the old one would drop
+   * entries that are still sitting in a calendar with nothing pointing at them.
+   */
+  const swapBoard = useCallback((state: BoardState) => {
+    const previous = latestBoard.current;
+    const stranded = [...previous.orphanedEvents, ...strandedEvents(previous, state)];
+    dispatch({ type: 'replace', state });
+    if (stranded.length > 0) dispatch({ type: 'orphanEvents', ids: stranded });
+  }, []);
+
+  const adoptRemote = swapBoard;
   const sync = useSync(board, adoptRemote);
 
   useEffect(() => {
@@ -298,7 +316,14 @@ export default function App() {
   }, [board.cards, board.lanes]);
 
   const patchCard = useCallback((id: string, patch: Partial<Card>) => dispatch({ type: 'update', id, patch }), []);
-  const publishing = usePublishing(m365Config, calendarReady, publishable, patchCard);
+  const publishing = usePublishing(
+    m365Config,
+    calendarReady,
+    publishable,
+    patchCard,
+    board.orphanedEvents,
+    useCallback((ids: string[]) => dispatch({ type: 'eventsRemoved', ids }), []),
+  );
 
   /* ---------- card actions ---------- */
 
@@ -419,12 +444,12 @@ export default function App() {
       const count = Object.keys(state.cards).length;
       if (!window.confirm(`Replace the current board with ${count} card${count === 1 ? '' : 's'} from ${file.name}?`)) return;
       snapshot();
-      dispatch({ type: 'replace', state });
+      swapBoard(state);
       setOpenId(null);
     } catch {
       window.alert(`Couldn't read that file — it doesn't look like a T-Card Planner export.`);
     }
-  }, [snapshot]);
+  }, [snapshot, swapBoard]);
 
   /* ---------- keyboard ---------- */
 
@@ -643,6 +668,7 @@ export default function App() {
                     isPast={isPast(day)}
                     isWeekend={isWeekend(day)}
                     capacity={settings.capacity}
+                    events={m365.events.get(day)}
                     onOpen={setOpenId}
                     onQuickAdd={quickAdd}
                     onOpenDay={openDay}

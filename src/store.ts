@@ -38,6 +38,7 @@ export function emptyBoard(): BoardState {
     projects: {},
     clients: {},
     clientOrder: [],
+    orphanedEvents: [],
   };
 }
 
@@ -97,6 +98,9 @@ export type Action =
   | { type: 'addClient'; client: Client }
   | { type: 'updateClient'; id: string; patch: Partial<Client> }
   | { type: 'deleteClient'; id: string }
+  /** Entries to take off the calendar, and the acknowledgement they are gone. */
+  | { type: 'orphanEvents'; ids: string[] }
+  | { type: 'eventsRemoved'; ids: string[] }
   | { type: 'replace'; state: BoardState };
 
 export function laneOf(state: BoardState, cardId: string): LaneId | undefined {
@@ -203,6 +207,23 @@ function place(lanes: BoardState['lanes'], id: string, lane: LaneId, index?: num
   return next;
 }
 
+/** A board nobody ever connects a calendar to would otherwise collect these
+ *  forever. Old ids are dropped first: an entry from months ago is far more
+ *  likely to have been dealt with by hand already. */
+const ORPHAN_LIMIT = 200;
+const capOrphans = (ids: string[]) => (ids.length > ORPHAN_LIMIT ? ids.slice(-ORPHAN_LIMIT) : ids);
+
+/** The calendar entries `before` had and `after` does not — what an import or
+ *  a board adopted from another device leaves stranded in Outlook. */
+export function strandedEvents(before: BoardState, after: BoardState): string[] {
+  const kept = new Set(
+    Object.values(after.cards).map((card) => card.eventId).filter((id): id is string => !!id),
+  );
+  return Object.values(before.cards)
+    .map((card) => card.eventId)
+    .filter((id): id is string => !!id && !kept.has(id));
+}
+
 /** Where a card lands when it is dropped into a lane by hand: above the done
  *  pile, because finished cards have sunk to the bottom and a card being moved
  *  onto a day is, by definition, not finished. */
@@ -260,6 +281,7 @@ export function reducer(state: BoardState, action: Action): BoardState {
     }
 
     case 'delete': {
+      const doomed = state.cards[action.id];
       const cards = { ...state.cards };
       delete cards[action.id];
       const lanes: BoardState['lanes'] = {};
@@ -267,7 +289,11 @@ export function reducer(state: BoardState, action: Action): BoardState {
         const filtered = ids.filter((x) => x !== action.id);
         if (filtered.length > 0 || key === BACKLOG) lanes[key] = filtered;
       }
-      return { ...state, cards, lanes };
+      // The card is going; its calendar entry has to be told separately.
+      const orphanedEvents = doomed?.eventId
+        ? capOrphans([...state.orphanedEvents, doomed.eventId])
+        : state.orphanedEvents;
+      return { ...state, cards, lanes, orphanedEvents };
     }
 
     case 'duplicate': {
@@ -362,6 +388,18 @@ export function reducer(state: BoardState, action: Action): BoardState {
         projects[id] = project.clientId === action.id ? { ...project, clientId: null } : project;
       }
       return { ...state, clients, clientOrder: state.clientOrder.filter((x) => x !== action.id), cards, projects };
+    }
+
+    case 'orphanEvents': {
+      const fresh = action.ids.filter((id) => !state.orphanedEvents.includes(id));
+      if (fresh.length === 0) return state;
+      return { ...state, orphanedEvents: capOrphans([...state.orphanedEvents, ...fresh]) };
+    }
+
+    case 'eventsRemoved': {
+      const gone = new Set(action.ids);
+      const kept = state.orphanedEvents.filter((id) => !gone.has(id));
+      return kept.length === state.orphanedEvents.length ? state : { ...state, orphanedEvents: kept };
     }
 
     case 'replace':
@@ -516,6 +554,9 @@ export function normalise(input: unknown): BoardState {
     projects,
     clients,
     clientOrder,
+    orphanedEvents: Array.isArray(raw.orphanedEvents)
+      ? capOrphans((raw.orphanedEvents as unknown[]).filter((id): id is string => typeof id === 'string'))
+      : [],
   };
 }
 
@@ -592,6 +633,7 @@ function seedBoard(): BoardState {
     projects: { [project.id]: project },
     clients: { [client.id]: client },
     clientOrder: [client.id],
+    orphanedEvents: [],
     cards: Object.fromEntries(cards.map((c) => [c.id, c])),
     lanes: {
       [today]: [cards[0].id, cards[1].id],

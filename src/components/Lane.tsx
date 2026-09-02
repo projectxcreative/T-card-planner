@@ -4,6 +4,12 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import SortableCard from './TCard';
 import type { Card, LaneId } from '../types';
 import { formatEstimate } from '../cardText';
+import { formatTime } from '../dates';
+import type { CalendarEvent } from '../m365';
+
+/** Past this many the strip would start competing with the cards, which are
+ *  the point of the column. The rest are a click away on the day view. */
+const CALENDAR_LIMIT = 4;
 
 export interface LaneProps {
   id: LaneId;
@@ -18,6 +24,9 @@ export interface LaneProps {
   isBacklog?: boolean;
   /** Hours per day at which the load bar reads as over-committed. */
   capacity: number;
+  /** What is already in the calendar for this day. Empty on the backlog, and
+   *  whenever no calendar is connected. */
+  events?: CalendarEvent[];
   onOpen: (id: string) => void;
   onQuickAdd: (lane: LaneId, title: string) => void;
   /** Open this day on its own timeline. Absent on the backlog. */
@@ -25,7 +34,7 @@ export interface LaneProps {
 }
 
 export default function Lane(props: LaneProps) {
-  const { id, title, subtitle, cards, matches, isToday, isPast, isWeekend, isBacklog, capacity, onOpen, onQuickAdd, onOpenDay } = props;
+  const { id, title, subtitle, cards, matches, isToday, isPast, isWeekend, isBacklog, capacity, events = [], onOpen, onQuickAdd, onOpenDay } = props;
   const { setNodeRef, isOver } = useDroppable({ id: `lane:${id}`, data: { type: 'lane', lane: id } });
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
@@ -83,6 +92,35 @@ export default function Lane(props: LaneProps) {
         <div className={planned > capacity ? 'lane-load is-over-capacity' : 'lane-load'} aria-hidden="true">
           <span style={{ width: `${load * 100}%` }} />
         </div>
+      )}
+
+      {/* What else is on that day. Deliberately quiet: it is context for the
+          plan, not part of it, and nothing here can be dragged or edited. */}
+      {events.length > 0 && (
+        <ul className="lane-cal" aria-label={`${events.length} calendar ${events.length === 1 ? 'entry' : 'entries'}`}>
+          {events.slice(0, CALENDAR_LIMIT).map((event) => (
+            <li
+              key={event.id}
+              className={event.soft ? 'lane-cal-row is-soft' : 'lane-cal-row'}
+              title={`${event.allDay ? 'All day' : `${formatTime(event.start ?? 0)}–${formatTime(event.end ?? 0)}`} · ${event.subject}${event.location ? ` · ${event.location}` : ''}`}
+            >
+              <span className="lane-cal-time">{event.allDay ? 'All day' : formatTime(event.start ?? 0)}</span>
+              <span className="lane-cal-name">{event.subject}</span>
+            </li>
+          ))}
+          {events.length > CALENDAR_LIMIT && (
+            <li>
+              <button
+                type="button"
+                className="lane-cal-more"
+                onClick={() => onOpenDay?.(id)}
+                title="Open this day on a timeline"
+              >
+                +{events.length - CALENDAR_LIMIT} more
+              </button>
+            </li>
+          )}
+        </ul>
       )}
 
       <div ref={setNodeRef} className="lane-drop">

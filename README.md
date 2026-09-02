@@ -50,6 +50,12 @@ along its top edge, and the board opens scrolled to it.
 property of the week you're looking at, so it sits with the week rather than
 behind the gear. It applies to the month too, and follows you between them.
 
+With a calendar connected, each day column carries what's already in it at the
+top — time, subject, four at most and a link to the day view past that. Free and
+tentative entries are dimmed and italic, since they're on the calendar without
+necessarily being a claim on the day. It's context for the plan, not part of it:
+nothing there can be dragged or edited.
+
 Each day column ends with the hours **logged** on it — the sized cards that got
 finished. The count at the top is what's still ahead of you; the total at the
 bottom is what's behind, which is the number you want when looking back at a
@@ -236,9 +242,9 @@ work on a phone, which is where the old toolbar buttons couldn't go.
 ## The Microsoft 365 calendar
 
 Two things, deliberately separate: your existing Outlook entries are **read**
-into the day and month views so the plan is made with your meetings in front of
-you, and a card **writes** an entry only when you tick *Publish to calendar* on
-it.
+into the week, day and month views so the plan is made with your meetings in
+front of you, and a card **writes** an entry only when you tick *Publish to
+calendar* on it.
 
 The sign-in happens in the browser using the authorization-code flow with
 **PKCE**. There is no client secret anywhere, and nothing about it reaches the
@@ -330,6 +336,14 @@ on its strip.
 The card is the original and the entry is the copy: edits made in Outlook are
 overwritten the next time the card changes. If someone deletes the entry in
 Outlook, the next change makes a fresh one rather than giving up.
+
+**Deleting a published card takes its entry with it.** That needs saying because
+it isn't automatic: the card carries the id of its entry, so deleting the card
+would otherwise take the only pointer to it and leave the entry in Outlook
+forever. The id is kept on the board instead, and removed from the calendar by
+the next device that has one connected — which is also why it travels with the
+board rather than staying on the device that did the deleting. Importing a
+backup does the same for everything the old board had published.
 
 Only scheduled cards can be published, because an entry needs a day. The box
 says so rather than just greying out.
@@ -529,7 +543,7 @@ src/
   components/
     TopBar.tsx         the view tabs, date nav, search, theme, settings
     SettingsDialog.tsx categories, clients, card defaults, the week, calendar
-    Lane.tsx           a day (or the backlog), quick add, load bar, logged total
+    Lane.tsx           a day: quick add, load bar, calendar strip, logged total
     TCard.tsx          the card face, its sortable wrapper, client chips
     CardPanel.tsx      the editing panel, as a sidebar or a window
     DayView.tsx        the timeline: drag to move, drag the edge to resize

@@ -619,6 +619,9 @@ export function usePublishing(
   connected: boolean,
   cards: { card: Card; lane: LaneId }[],
   onPatch: (id: string, patch: Partial<Card>) => void,
+  /** Entries whose card has gone, and the way to say they have been removed. */
+  orphans: string[],
+  onRemoved: (ids: string[]) => void,
 ): PublishState {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Set<string>>(() => new Set());
@@ -632,6 +635,8 @@ export function usePublishing(
 
   const patchRef = useRef(onPatch);
   patchRef.current = onPatch;
+  const removedRef = useRef(onRemoved);
+  removedRef.current = onRemoved;
 
   // The list is rebuilt on every board change; the signatures are what decide
   // whether there is anything to do.
@@ -712,6 +717,43 @@ export function usePublishing(
       setBusy(new Set());
     })();
   }, [connected, graph, work]);
+
+  /**
+   * Takes the stranded entries off the calendar.
+   *
+   * Separate from the card loop above because there is no card left to hang it
+   * off — only an id. A 404 counts as done: someone deleting it in Outlook
+   * first is the outcome we were after, and leaving it on the list would mean
+   * retrying it forever.
+   */
+  const sweeping = useRef(false);
+
+  useEffect(() => {
+    if (!connected || sweeping.current || orphans.length === 0) return;
+    sweeping.current = true;
+    const doing = [...orphans];
+
+    void (async () => {
+      const removed: string[] = [];
+      try {
+        for (const id of doing) {
+          const response = await graph(`/me/events/${id}`, { method: 'DELETE' });
+          if (response.ok || response.status === 404) {
+            removed.push(id);
+            continue;
+          }
+          // Anything else is worth another go later rather than dropping.
+          throw new Error(`Could not remove a calendar entry (${response.status}).`);
+        }
+        setError(null);
+      } catch (failure) {
+        setError(failure instanceof Error ? failure.message : 'Could not reach the calendar.');
+      } finally {
+        if (removed.length > 0) removedRef.current(removed);
+        sweeping.current = false;
+      }
+    })();
+  }, [connected, graph, orphans]);
 
   return { busy, error };
 }
