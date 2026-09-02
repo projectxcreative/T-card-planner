@@ -331,6 +331,14 @@ The card is the original and the entry is the copy: edits made in Outlook are
 overwritten the next time the card changes. If someone deletes the entry in
 Outlook, the next change makes a fresh one rather than giving up.
 
+**Deleting a published card takes its entry with it.** That needs saying because
+it isn't automatic: the card carries the id of its entry, so deleting the card
+would otherwise take the only pointer to it and leave the entry in Outlook
+forever. The id is kept on the board instead, and removed from the calendar by
+the next device that has one connected — which is also why it travels with the
+board rather than staying on the device that did the deleting. Importing a
+backup does the same for everything the old board had published.
+
 Only scheduled cards can be published, because an entry needs a day. The box
 says so rather than just greying out.
 

@@ -252,6 +252,17 @@ export interface BoardState {
   clients: Record<string, Client>;
   /** Client ids in the order they should be listed. */
   clientOrder: string[];
+  /**
+   * Calendar entries whose card is gone, waiting to be taken off the calendar.
+   *
+   * A published card carries the id of its entry, so removing the entry when
+   * the card changes is easy — you still have the card. Deleting the card takes
+   * that id with it, and the entry is left in Outlook with nothing pointing at
+   * it. The id is kept here instead until a connected device can remove it,
+   * which is also why it travels with the board rather than sitting on the
+   * device that did the deleting: that device may never be the one connected.
+   */
+  orphanedEvents: string[];
 }
 
 /** Pounds, with the pence dropped — project values are round numbers. */
