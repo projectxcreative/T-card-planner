@@ -1023,7 +1023,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------- day view ---------- */
 
-.board.is-day, .board.is-month, .board.is-projects, .board.is-clients { display: block; overflow: auto; }
+.board.is-day, .board.is-month, .board.is-projects, .board.is-clients, .board.is-billing { display: block; overflow: auto; }
 .board.is-day > *, .board.is-month > *, .board.is-projects > *, .board.is-clients > * {
   max-width: var(--shell-max);
   margin-inline: auto;
@@ -1471,7 +1471,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 @media (max-width: 700px) {
-  .board.is-day, .board.is-month, .board.is-projects, .board.is-clients { padding: 10px 12px 14px; }
+  .board.is-day, .board.is-month, .board.is-projects, .board.is-clients, .board.is-billing { padding: 10px 12px 14px; }
   /* One column of cards beside the clock; the calendar and the loose cards
      fall underneath rather than squeezing three columns onto a phone. */
   /* Wide enough for "08:00 AM" on one line, small enough not to cost the
@@ -1948,3 +1948,195 @@ button.chip:hover { transform: translateY(-1px); }
 :root[data-skin='draft'] button.chip:hover { transform: none; }
 :root[data-skin='draft'] .monthchip:hover { transform: none; }
 :root[data-skin='draft'] .split-item:hover { transform: none; }
+
+/* ---------- billing ---------- */
+
+/* A column of rows does not want a 2400px shell: past this the title and the
+   figure are so far apart you have to track across to pair them up. */
+.billing {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100%;
+  max-width: 1100px;
+  margin-inline: auto;
+}
+
+.billing-head { display: flex; align-items: baseline; gap: 12px; }
+.billing-head .split-total { margin-left: auto; }
+
+.billing-month {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Work with no month yet is on the list to be given one, not to be billed. */
+.billing-month.is-unset { background: var(--surface-2); border-style: dashed; }
+
+.billing-month-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.billing-month-name { margin: 0; font-size: var(--t-lead); font-weight: 650; letter-spacing: -0.01em; }
+
+.billing-month-count {
+  min-width: 20px;
+  text-align: center;
+  padding: 0 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: var(--t-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.billing-month-total {
+  margin-left: auto;
+  font-size: var(--t-lead);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The month's split. Only the buckets with something in them are drawn, so a
+   quiet month is one line rather than four mostly-empty ones. */
+.billing-split {
+  list-style: none;
+  margin: 0;
+  padding: 10px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.billing-split-item {
+  --bucket: var(--text-faint);
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--bucket) 35%, transparent);
+  border-left: 3px solid var(--bucket);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bucket) 8%, var(--surface));
+}
+
+.billing-split-item.is-todo { --bucket: var(--s-todo); }
+/* The one you came here for. */
+.billing-split-item.is-due { --bucket: var(--warn); }
+.billing-split-item.is-sent { --bucket: var(--s-doing); }
+.billing-split-item.is-paid { --bucket: var(--s-done); }
+
+.billing-split-label { font-size: var(--t-meta); font-weight: 650; color: var(--text-dim); }
+.billing-split-value { font-size: var(--t-item); font-weight: 650; font-variant-numeric: tabular-nums; }
+.billing-split-count { font-size: var(--t-micro); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+.billing-rows { list-style: none; margin: 0; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; }
+
+.billing-row {
+  --bucket: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--bucket);
+  background: var(--surface-2);
+}
+
+.billing-row.is-todo { --bucket: var(--s-todo); }
+.billing-row.is-due { --bucket: var(--warn); }
+.billing-row.is-sent { --bucket: var(--s-doing); }
+.billing-row.is-paid { --bucket: var(--s-done); }
+.billing-row.is-lost { --bucket: var(--line); opacity: 0.6; }
+
+.billing-row-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.billing-row-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--t-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.billing-row-value {
+  flex: none;
+  font-size: var(--t-body);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.billing-row-month {
+  flex: none;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: var(--t-meta);
+}
+
+@media (max-width: 700px) {
+  .billing-row { flex-wrap: wrap; }
+  .billing-row-open { flex: 1 1 100%; }
+}
+
+/* ---------- dragging a job between months ---------- */
+
+.billing-month.is-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), 0 8px 30px -12px var(--accent);
+}
+
+/* Three dots in a column: enough of a handle to find, quiet enough to ignore. */
+.billing-grip {
+  flex: none;
+  width: 12px;
+  align-self: stretch;
+  cursor: grab;
+  opacity: 0.35;
+  background-image: radial-gradient(circle, var(--text-faint) 1px, transparent 1px);
+  background-size: 4px 5px;
+  background-position: center;
+  background-repeat: repeat-y;
+  border-radius: var(--radius-xs);
+  touch-action: none;
+}
+
+.billing-row:hover .billing-grip { opacity: 0.75; }
+.billing-grip:active { cursor: grabbing; }
+.billing-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 1; }
+
+.billing-ghost {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  font-size: var(--t-body);
+  cursor: grabbing;
+}
+
+.billing-ghost strong { font-variant-numeric: tabular-nums; }

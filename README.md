@@ -35,8 +35,8 @@ Access session to present, every request is turned away, which is the point.
 
 ## Views
 
-Five of them, along the top: **Week**, **Day**, **Month**, **Projects** and
-**Clients**. The first three share one date between them, so switching view
+Six of them, along the top: **Week**, **Day**, **Month**, **Projects**,
+**Clients** and **Billing**. The first three share one date between them, so switching view
 keeps your place — step forward a week, open Day, and you're on a day in that
 week rather than back at today.
 
@@ -128,6 +128,37 @@ putting one away is saying you've stopped counting it.
 
 Stages are the app's own and fixed, like card statuses — it's the categories and
 clients that are yours to name.
+
+### Billing
+
+![Billing](docs/billing.png)
+
+What is billable, month by month — the view you open at the end of a month to
+work out what to invoice.
+
+Projects are grouped by their **invoice month**, each group showing what it adds
+up to and how that splits: *Still working*, *To invoice*, *Invoiced*, *Paid*.
+Only the buckets with something in them are drawn, so a quiet month is one line
+rather than four mostly-empty ones. **To invoice** is the one you came for —
+delivered, not yet billed — and the figure at the top is that total across every
+month.
+
+The month is deliberately **not** the month the work finished in. Something
+delivered at the end of June often goes on July's invoice, and which month a job
+lands in is a decision rather than a fact about the calendar. A project picks one
+up the first time you mark it Delivered — this month, as a first guess — and it
+is never overwritten after that. Move a job to another month from the dropdown on
+its row here, or from the project itself.
+
+**Drag a job between months** by the grip at the left of its row — the totals
+follow as it lands. That covers moving work between months you can see; the
+dropdown on the row reaches any month, including ones with nothing in them yet.
+Dropping onto *No invoice month yet* takes the month off again.
+
+Lost work is listed but counted at nothing, and archived projects are left out
+entirely: putting one away means you have stopped counting it, and that has to
+include the invoice list or these totals and the ones on the Projects list
+disagree.
 
 ### Clients
 
@@ -587,6 +618,7 @@ src/
     MonthView.tsx      the month grid, cards as draggable chips
     ProjectsView.tsx   the project list and one project's detail
     ClientsView.tsx    the client list, their projects, cards and totals
+    BillingView.tsx    projects by invoice month, and what each month comes to
     ClientFilter.tsx   the toolbar popover that narrows the board to a client
     RichText.tsx       Tiptap editor, lazy-loaded on first card open
     SyncBadge.tsx      sync status, who you're signed in as, the conflict prompt

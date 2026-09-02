@@ -129,6 +129,30 @@ export const STAGE_GROUP_LABELS: Record<StageGroup, string> = {
 /** A lost project is worth nothing and shouldn't swell any total. */
 export const isLost = (stage: ProjectStage) => stage === 'lost';
 
+/** The stage at which a project stops being work and starts being money: it is
+ *  finished, and the invoice is the next thing that has to happen to it. */
+export const isBillable = (stage: ProjectStage) => stage === 'delivered';
+
+/** How the billing view splits a month. Narrower than the money groups, which
+ *  fold "delivered" in with work still under way — for billing, delivered is
+ *  precisely the row you are looking for. */
+export const BILLING_BUCKETS = ['todo', 'due', 'sent', 'paid'] as const;
+export type BillingBucket = (typeof BILLING_BUCKETS)[number];
+
+export const BILLING_LABELS: Record<BillingBucket, string> = {
+  todo: 'Still working',
+  due: 'To invoice',
+  sent: 'Invoiced',
+  paid: 'Paid',
+};
+
+export function billingBucket(stage: ProjectStage): BillingBucket | null {
+  if (stage === 'delivered') return 'due';
+  if (stage === 'invoiced') return 'sent';
+  if (stage === 'paid') return 'paid';
+  return isLost(stage) ? null : 'todo';
+}
+
 /** A piece of billable work several cards belong to. The value is what the
  *  whole thing is worth, in whole pounds — enough to see what a week of cards
  *  is actually earning, without turning the planner into an invoicing tool. */
@@ -144,6 +168,15 @@ export interface Project {
   /** The client it is for. One, not a list: a project belongs to whoever is
    *  paying for it, and two payers is a different kind of thing entirely. */
   clientId: string | null;
+  /**
+   * The month this is to be billed in, as `YYYY-MM`, or null until it is.
+   *
+   * Deliberately not derived from when the work finished. Something delivered
+   * at the end of June often goes on July's invoice, and which month a job
+   * lands in is a decision rather than a fact about the calendar — so it is set
+   * when a project is first delivered and freely moved afterwards.
+   */
+  invoiceMonth: string | null;
   /** Cards created inside a project start with this category. */
   colour: CategoryId;
   /** Archived projects drop out of the pickers but keep their cards. */
@@ -157,7 +190,7 @@ export interface Project {
 /** Where a card opens: beside the board, or over it. */
 export type CardSurface = 'drawer' | 'modal';
 
-export const VIEWS = ['week', 'day', 'month', 'projects', 'clients'] as const;
+export const VIEWS = ['week', 'day', 'month', 'projects', 'clients', 'billing'] as const;
 export type ViewMode = (typeof VIEWS)[number];
 
 export const VIEW_LABELS: Record<ViewMode, string> = {
@@ -166,6 +199,7 @@ export const VIEW_LABELS: Record<ViewMode, string> = {
   month: 'Month',
   projects: 'Projects',
   clients: 'Clients',
+  billing: 'Billing',
 };
 
 /** What the app needs to talk to a Microsoft 365 tenant. Both halves come off

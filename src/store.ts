@@ -5,7 +5,9 @@ import {
   CLIENT_PALETTE,
   DEFAULT_CATEGORIES,
   LABEL_MAX,
+  BILLING_BUCKETS,
   PROJECT_STAGES,
+  billingBucket,
   isLost,
   defaultCategories,
   type BoardState,
@@ -14,13 +16,14 @@ import {
   type Category,
   type CategoryId,
   type Client,
+  type BillingBucket,
   type LaneId,
   type Project,
   type ProjectStage,
   type Status,
 } from './types';
 import { isHexColour } from './colour';
-import { addDays, todayKey } from './dates';
+import { addDays, thisMonthKey, todayKey } from './dates';
 
 const STORAGE_KEY = 'tcard-planner.board.v1';
 const VERSION = 2;
@@ -72,6 +75,7 @@ export function newProject(title: string, patch: Partial<Project> = {}): Project
     value: 0,
     stage: 'enquiry',
     clientId: null,
+    invoiceMonth: null,
     colour: 'blue',
     archived: false,
     createdAt: now,
@@ -169,6 +173,62 @@ export function cardsOfClient(state: BoardState, clientId: string): { card: Card
     state,
     (card) => card.clients.includes(clientId) || (!!card.projectId && theirs.has(card.projectId)),
   );
+}
+
+export interface BillingRow {
+  project: Project;
+  bucket: BillingBucket | null;
+}
+
+export interface BillingMonth {
+  /** `YYYY-MM`, or null for the projects that have not been given a month. */
+  key: string | null;
+  rows: BillingRow[];
+  /** Everything in the month that is still worth something. Lost work is not. */
+  total: number;
+  byBucket: Record<BillingBucket, { count: number; value: number }>;
+}
+
+/**
+ * Projects by the month they are to be billed in, oldest first, with the
+ * unassigned ones last.
+ *
+ * Archived projects are left out entirely — putting one away is saying you have
+ * stopped counting it, and that has to mean the invoice list too, or the totals
+ * here and the ones on the projects list disagree.
+ */
+export function billingMonths(state: BoardState): BillingMonth[] {
+  const months = new Map<string | null, BillingRow[]>();
+  for (const project of Object.values(state.projects)) {
+    if (project.archived) continue;
+    const key = project.invoiceMonth;
+    const rows = months.get(key);
+    if (rows) rows.push({ project, bucket: billingBucket(project.stage) });
+    else months.set(key, [{ project, bucket: billingBucket(project.stage) }]);
+  }
+
+  const empty = () =>
+    Object.fromEntries(BILLING_BUCKETS.map((b) => [b, { count: 0, value: 0 }])) as BillingMonth['byBucket'];
+
+  return [...months.entries()]
+    .map(([key, rows]) => {
+      const byBucket = empty();
+      let total = 0;
+      for (const row of rows) {
+        if (!row.bucket) continue; // lost: listed, but worth nothing
+        byBucket[row.bucket].count += 1;
+        byBucket[row.bucket].value += row.project.value;
+        total += row.project.value;
+      }
+      rows.sort((x, y) => byStage(x.project, y.project));
+      return { key, rows, total, byBucket };
+    })
+    .sort((a, b) => {
+      if (a.key === b.key) return 0;
+      if (a.key === null) return 1;
+      if (b.key === null) return -1;
+      return a.key < b.key ? -1 : 1;
+    });
 }
 
 /** What a client is worth and how much of it has been done. Value comes from
@@ -347,6 +407,14 @@ export function reducer(state: BoardState, action: Action): BoardState {
       const current = state.projects[action.id];
       if (!current) return state;
       const updated: Project = { ...current, ...action.patch, updatedAt: new Date().toISOString() };
+
+      // Reaching the end of the work is the moment a job acquires a month to be
+      // billed in. Only a first guess — it is a decision, and moving a June job
+      // onto July's invoice is normal — so it is never overwritten once set.
+      if (!updated.invoiceMonth && action.patch.stage && billingBucket(action.patch.stage) !== 'todo' && !isLost(action.patch.stage)) {
+        updated.invoiceMonth = thisMonthKey();
+      }
+
       return { ...state, projects: { ...state.projects, [action.id]: updated } };
     }
 
@@ -478,6 +546,7 @@ function normaliseProjects(input: unknown, clients: Record<string, Client>): Rec
       value: Number.isFinite(value.value) ? Math.max(0, Number(value.value)) : 0,
       // Projects that predate the pipeline are work you already have on.
       stage: PROJECT_STAGES.includes(value.stage as ProjectStage) ? (value.stage as ProjectStage) : 'active',
+      invoiceMonth: typeof value.invoiceMonth === 'string' && /^\d{4}-\d{2}$/.test(value.invoiceMonth) ? value.invoiceMonth : null,
       clientId: oneClient(value, clients),
       colour: CATEGORY_IDS.includes(value.colour as CategoryId) ? (value.colour as CategoryId) : 'blue',
       archived: value.archived === true,
@@ -596,6 +665,7 @@ function seedBoard(): BoardState {
     id: `${SEED_PREFIX}project`,
     value: 4500,
     stage: 'active',
+    invoiceMonth: null,
     clientId: client.id,
     colour: 'blue',
     description: '<p>Projects group cards, carry a value, and can be tagged with the clients they are for.</p>',
