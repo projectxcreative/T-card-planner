@@ -608,6 +608,14 @@ day view's timeline is the exception — dragging and resizing there are plain
 pointer events against the grid's own rectangle, which is both simpler than a
 drag library and the only way to get a resize handle out of one.
 
+Sizes and radii are tokens too, named for the job rather than the number:
+`--t-micro` through `--t-title` for type, `--radius-xs` through `--radius-lg`
+and `--radius-pill` for corners. No rule in the stylesheet states a font size or
+a corner in pixels — which is what makes a skin possible. The draft skin changes
+nothing but the values of those tokens, so squaring the whole app off and moving
+it onto whole-pixel type is a dozen declarations rather than a sweep of
+overrides fighting the base rules.
+
 Category colours reach the CSS as custom properties written into the document
 from the board's own settings, so everything downstream goes on naming
 `--c-blue` without caring who chose it. The app's own status colours are
