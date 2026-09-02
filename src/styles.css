@@ -2099,3 +2099,44 @@ button.chip:hover { transform: translateY(-1px); }
   .billing-row { flex-wrap: wrap; }
   .billing-row-open { flex: 1 1 100%; }
 }
+
+/* ---------- dragging a job between months ---------- */
+
+.billing-month.is-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), 0 8px 30px -12px var(--accent);
+}
+
+/* Three dots in a column: enough of a handle to find, quiet enough to ignore. */
+.billing-grip {
+  flex: none;
+  width: 12px;
+  align-self: stretch;
+  cursor: grab;
+  opacity: 0.35;
+  background-image: radial-gradient(circle, var(--text-faint) 1px, transparent 1px);
+  background-size: 4px 5px;
+  background-position: center;
+  background-repeat: repeat-y;
+  border-radius: var(--radius-xs);
+  touch-action: none;
+}
+
+.billing-row:hover .billing-grip { opacity: 0.75; }
+.billing-grip:active { cursor: grabbing; }
+.billing-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 1; }
+
+.billing-ghost {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  font-size: var(--t-body);
+  cursor: grabbing;
+}
+
+.billing-ghost strong { font-variant-numeric: tabular-nums; }

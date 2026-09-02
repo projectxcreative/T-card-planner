@@ -150,6 +150,11 @@ up the first time you mark it Delivered — this month, as a first guess — and
 is never overwritten after that. Move a job to another month from the dropdown on
 its row here, or from the project itself.
 
+**Drag a job between months** by the grip at the left of its row — the totals
+follow as it lands. That covers moving work between months you can see; the
+dropdown on the row reaches any month, including ones with nothing in them yet.
+Dropping onto *No invoice month yet* takes the month off again.
+
 Lost work is listed but counted at nothing, and archived projects are left out
 entirely: putting one away means you have stopped counting it, and that has to
 include the invoice list or these totals and the ones on the Projects list
