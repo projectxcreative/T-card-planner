@@ -182,10 +182,20 @@ export interface M365Config {
 /** Per-device view preferences. Unlike categories these stay on the device:
  *  how many hours you plan into a day, and whether you want to see the
  *  weekend, is about the screen in front of you rather than about the board. */
+/** The board's visual skin. `default` is the app's own look; `draft` is the
+ *  squarer, denser one after the K10k design zines — columns ruled together by
+ *  hairlines, numbered and letterspaced, figures that line up in a column.
+ *
+ *  It is a separate axis from `theme`, not a third value of it: a skin changes
+ *  shape and type, a theme changes the palette, and either skin wears either
+ *  theme. */
+export type Skin = 'default' | 'draft';
+
 export interface Settings {
   includeWeekend: boolean;
   capacity: number;
   theme: 'light' | 'dark';
+  skin: Skin;
   /** The category a new card gets when nothing else decides. */
   defaultCategory: CategoryId;
   /** Show the description excerpt on the card face. */
@@ -201,6 +211,7 @@ export const DEFAULT_SETTINGS: Settings = {
   includeWeekend: false,
   capacity: 6,
   theme: 'light',
+  skin: 'default',
   defaultCategory: 'slate',
   showDescription: true,
   cardSurface: 'drawer',

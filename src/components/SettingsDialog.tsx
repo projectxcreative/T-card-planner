@@ -340,6 +340,20 @@ export default function SettingsDialog(props: Props) {
                 onChange={(event) => onSettings({ theme: event.target.checked ? 'dark' : 'light' })}
               />
             </label>
+
+            <label className="settings-row">
+              <span>
+                Skin
+                <span className="settings-hint">Shape and type, independent of light and dark</span>
+              </span>
+              <select
+                value={settings.skin}
+                onChange={(event) => onSettings({ skin: event.target.value as Settings['skin'] })}
+              >
+                <option value="default">Default</option>
+                <option value="draft">Draft</option>
+              </select>
+            </label>
           </section>
 
           <section className="settings-section">
