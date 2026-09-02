@@ -10,9 +10,9 @@
   --text: #16202e;
   --text-dim: #5d6b7e;
   --text-faint: #8b98a9;
-  --accent: #2f6df6;
-  --accent-soft: #e5edff;
-  --danger: #cf3a3a;
+  --accent: #2179c8;
+  --accent-soft: #e3eff9;
+  --danger: #cc3a35;
   --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
   --shadow-2: 0 8px 24px rgba(16, 24, 40, 0.14);
   --radius: 8px;
@@ -38,10 +38,10 @@
      The category colours themselves — `--c-slate` and friends — are written
      into the document from the board's own settings; see categories.tsx. */
   --s-todo: #64748b;
-  --s-doing: #2f6df6;    --s-doing-tint: #eaf1ff;
-  --s-blocked: #d4453c;  --s-blocked-tint: #fdeceb;
-  --s-done: #3f9142;     --s-done-tint: #e9f5ea;
-  --warn: #a86a00;       --warn-tint: #fdf2dc;
+  --s-doing: #2179c8;    --s-doing-tint: #e6f1fb;
+  --s-blocked: #d2402c;  --s-blocked-tint: #fcece8;
+  --s-done: #5f8f22;     --s-done-tint: #eef5e0;
+  --warn: #a87a06;       --warn-tint: #fdf3dc;
 }
 
 :root[data-theme='dark'] {
@@ -54,19 +54,19 @@
   --text: #e7ecf3;
   --text-dim: #a3b0c2;
   --text-faint: #74829a;
-  --accent: #6c9bff;
-  --accent-soft: #1e2c4a;
-  --danger: #f0736b;
+  --accent: #5aa8e6;
+  --accent-soft: #17304a;
+  --danger: #ef7a6f;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 10px 28px rgba(0, 0, 0, 0.5);
   /* Dark theme's accent is pastel, so the ink on it flips to near-black. */
   --head-ink: #0f141b;
 
   --s-todo: #8b9ab0;
-  --s-doing: #5b8cff;    --s-doing-tint: #1b2740;
-  --s-blocked: #ef6a61;  --s-blocked-tint: #35201f;
-  --s-done: #5cb860;     --s-done-tint: #1a2c1c;
-  --warn: #e0a336;       --warn-tint: #2f2716;
+  --s-doing: #58a5e8;    --s-doing-tint: #17293d;
+  --s-blocked: #ee7057;  --s-blocked-tint: #35211d;
+  --s-done: #93bf4a;     --s-done-tint: #222c17;
+  --warn: #e6b23c;       --warn-tint: #2f2716;
 }
 
 * { box-sizing: border-box; }
@@ -122,15 +122,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 650; letter-spacing: -0.01em; }
 
+/* The mark is the one piece of the interface that isn't ours to restyle:
+   it carries its own colour, in both themes, at whatever size it's given. */
 .brand-mark {
-  width: 16px; height: 16px; border-radius: 3px;
-  background: linear-gradient(140deg, var(--accent), var(--warn), var(--accent));
-  background-size: 220% 220%;
-  animation: brand 9s ease-in-out infinite;
-}
-
-@keyframes brand {
-  50% { background-position: 100% 100%; }
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: block;
 }
 
 .brand-name { white-space: nowrap; }

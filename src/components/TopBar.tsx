@@ -40,7 +40,7 @@ export default function TopBar(props: Props) {
     <header className="topbar">
      <div className="topbar-inner">
       <div className="brand">
-        <span className="brand-mark" aria-hidden="true" />
+        <img className="brand-mark" src="/logo.svg" alt="" width={20} height={20} />
         <span className="brand-name">T-Card Planner</span>
       </div>
 
