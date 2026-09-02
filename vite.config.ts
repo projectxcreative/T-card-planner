@@ -6,7 +6,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // The app decides when a new build takes over, rather than the new
+      // service worker claiming the page and leaving the running app on the
+      // code it already loaded. See `src/updates.ts`.
+      registerType: 'prompt',
       includeAssets: ['logo.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'T-Card Planner',
@@ -30,7 +33,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
-        runtimeCaching: [{ urlPattern: /^\/api\//, handler: 'NetworkOnly' }],
+        // A callback rather than a regular expression: Workbox matches those
+        // against the whole URL, so an anchored `/^\/api\//` never fires.
+        runtimeCaching: [{ urlPattern: ({ url }) => url.pathname.startsWith('/api/'), handler: 'NetworkOnly' }],
         cleanupOutdatedCaches: true,
       },
     }),

@@ -613,6 +613,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .sync { position: relative; }
 
+/* Held-back build. Quiet — it is news, not a problem — but it is the one
+   control in the bar that wasn't there a moment ago, so it gets the accent. */
+.update { flex: none; white-space: nowrap; }
+
 .sync-badge {
   display: flex;
   align-items: center;
@@ -862,7 +866,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .weeknav { flex: 1; min-width: 0; }
   .weekrange { margin-left: 6px; font-size: var(--t-body); overflow: hidden; text-overflow: ellipsis; }
   .search { flex: 1; width: auto; min-width: 0; }
-  .sync-label { display: none; }
+  .sync-label, .update-label { display: none; }
   .sync-badge { padding: 5px 8px; }
   .sync-pop { width: min(280px, calc(100vw - 24px)); }
   .conflict { padding: 9px 12px; }

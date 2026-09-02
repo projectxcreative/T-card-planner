@@ -86,6 +86,7 @@ import {
 } from './dates';
 import { summarise } from './cardText';
 import { useSync } from './sync';
+import { useAppUpdate } from './updates';
 import { effectiveConfig, useM365, usePublishing } from './m365';
 import { ConflictBar } from './components/SyncBadge';
 
@@ -180,6 +181,7 @@ export default function App() {
 
   const adoptRemote = swapBoard;
   const sync = useSync(board, adoptRemote);
+  const update = useAppUpdate();
 
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -627,6 +629,7 @@ export default function App() {
             clientFilter={clientFilter}
             onClientFilter={setClientFilter}
             sync={sync}
+            update={update}
           />
 
           <ConflictBar sync={sync} />
