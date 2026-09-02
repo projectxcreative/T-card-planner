@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Project X Creative">
+  <title>Project X Creative</title>
+  <defs>
+    <linearGradient id="cool" gradientUnits="userSpaceOnUse" x1="20" y1="20" x2="140" y2="140">
+      <stop offset="0" stop-color="#0fa9a2"/>
+      <stop offset="0.22" stop-color="#129fac"/>
+      <stop offset="0.45" stop-color="#2179c8"/>
+      <stop offset="0.68" stop-color="#2e6bc4"/>
+      <stop offset="0.85" stop-color="#55519f"/>
+      <stop offset="1" stop-color="#7b4a9e"/>
+    </linearGradient>
+    <linearGradient id="warm" gradientUnits="userSpaceOnUse" x1="20" y1="20" x2="140" y2="140">
+      <stop offset="0" stop-color="#b01e68"/>
+      <stop offset="0.22" stop-color="#b81f6a"/>
+      <stop offset="0.40" stop-color="#d93a45"/>
+      <stop offset="0.55" stop-color="#e8512a"/>
+      <stop offset="0.67" stop-color="#f58a1e"/>
+      <stop offset="0.76" stop-color="#f5b31e"/>
+      <stop offset="0.86" stop-color="#a9c63c"/>
+      <stop offset="1" stop-color="#8dbe33"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke="url(#warm)" transform="rotate(180 100 100)"
+          d="M100 136.8 L27.6 64.4 A26 26 0 0 1 64.4 27.6 L118.4 81.6 A26 26 0 0 1 118.4 118.4 L64.4 172.4 A26 26 0 0 1 27.6 135.6 L52.6 110.6"/>
+    <path stroke="url(#cool)"
+          d="M100 136.8 L27.6 64.4 A26 26 0 0 1 64.4 27.6 L118.4 81.6 A26 26 0 0 1 118.4 118.4 L64.4 172.4 A26 26 0 0 1 27.6 135.6 L52.6 110.6"/>
+  </g>
+</svg>

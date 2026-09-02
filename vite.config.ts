@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['logo.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'T-Card Planner',
         short_name: 'Planner',
@@ -17,7 +17,7 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'any',
         background_color: '#eef1f5',
-        theme_color: '#2f6df6',
+        theme_color: '#2179c8',
         icons: [
           { src: '/pwa-192.png', sizes: '192x192', type: 'image/png' },
           { src: '/pwa-512.png', sizes: '512x512', type: 'image/png' },

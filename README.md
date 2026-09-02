@@ -521,6 +521,28 @@ the dashboard, 24 hours by default. When it runs out the badge says **Signed
 out** and offers to sign you back in; the board carries on working on the
 device meanwhile.
 
+## The mark
+
+`public/logo.svg` is the logo, and the only drawn asset in the repo. The browser
+tab points straight at it, and every PNG icon — the two PWA sizes, the maskable
+one, the Apple touch icon — is that same file rendered onto a white tile by
+`scripts/icons.mjs`. So replacing the mark is one file and one command:
+
+```bash
+npm i -D sharp && node scripts/icons.mjs
+```
+
+sharp isn't a dependency of the app: icons change about once a year, and a
+native module in everyone's install for that is a poor trade.
+
+The gradient the mark is drawn with is where the rest of the colour comes from.
+The accent blue, the eight default categories and the colours a new client is
+offered are all sampled off it — teal, blue and violet down one arm, lime,
+amber, red and magenta down the other — so a board in full colour still looks
+like it belongs to the logo in the corner. None of it is fixed: every category
+and client colour is yours to change in Settings, and doing so leaves the mark
+alone.
+
 ## Layout
 
 ```
@@ -529,6 +551,8 @@ worker/access.ts       verifies the Cloudflare Access login on every request
 worker/access.test.mjs signed-JWT checks for it — `npm test`
 wrangler.jsonc         Worker config — KV binding, assets, SPA fallback
 .env.example           build-time settings; the Microsoft 365 app registration
+public/logo.svg        the mark: the favicon, and the source for the app icons
+scripts/icons.mjs      renders it onto the PWA, maskable and Apple icons
 src/
   App.tsx              board state, the four views, drag and drop, keyboard, undo
   sync.ts              pull/push, offline queueing, conflict detection, session

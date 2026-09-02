@@ -22,15 +22,19 @@ export interface Category {
 
 export type Categories = Record<CategoryId, Category>;
 
+/** The eight defaults are lifted off the logo's own gradient — teal through
+ *  blue and violet on one arm, lime through amber and red to magenta on the
+ *  other — so a board full of colour still looks like it belongs to the mark
+ *  in the corner. Any of them can be changed in Settings. */
 export const DEFAULT_CATEGORIES: Categories = {
   slate: { label: 'General', colour: '#64748b' },
-  blue: { label: 'Client work', colour: '#2f6df6' },
-  teal: { label: 'Meetings', colour: '#0b7f75' },
-  green: { label: 'Admin', colour: '#3f9142' },
-  amber: { label: 'Waiting on', colour: '#a86a00' },
-  red: { label: 'Urgent', colour: '#d4453c' },
-  purple: { label: 'Deep work', colour: '#7c4ddb' },
-  pink: { label: 'Personal', colour: '#cd4a8c' },
+  blue: { label: 'Client work', colour: '#2179c8' },
+  teal: { label: 'Meetings', colour: '#0f8f8a' },
+  green: { label: 'Admin', colour: '#6f9c22' },
+  amber: { label: 'Waiting on', colour: '#c68512' },
+  red: { label: 'Urgent', colour: '#d84630' },
+  purple: { label: 'Deep work', colour: '#7b4a9e' },
+  pink: { label: 'Personal', colour: '#b81f6a' },
 };
 
 /** Long enough for "Client work — retainers", short enough to fit the strip. */
@@ -64,8 +68,8 @@ export const CLIENT_NAME_MAX = 40;
 /** The colours a new client is offered, in order — enough that the first
  *  handful are distinguishable without anyone reaching for the picker. */
 export const CLIENT_PALETTE = [
-  '#2f6df6', '#0b7f75', '#3f9142', '#a86a00',
-  '#d4453c', '#7c4ddb', '#cd4a8c', '#64748b',
+  '#2179c8', '#0f8f8a', '#6f9c22', '#c68512',
+  '#d84630', '#7b4a9e', '#b81f6a', '#64748b',
 ];
 
 /* ---------- projects ---------- */
