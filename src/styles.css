@@ -1461,6 +1461,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .modal.is-card { width: min(560px, 100%); max-height: min(88vh, 860px); }
 .modal.is-card .drawer-body { padding: 14px; overflow-y: auto; }
 
+/* Full screen: the same head + body, blown up to cover the viewport —
+   works the same whether the card normally opens as a drawer or a modal. */
+.modal.is-full,
+.drawer.is-full {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
 /* ---------- narrow screens, new views ---------- */
 
 @media (max-width: 1080px) {
