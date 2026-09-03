@@ -2,6 +2,7 @@ import SyncBadge from './SyncBadge';
 import ClientFilter from './ClientFilter';
 import { VIEWS, VIEW_LABELS, type Client, type Settings, type ViewMode } from '../types';
 import type { Sync } from '../sync';
+import type { AppUpdate } from '../updates';
 
 interface Props {
   view: ViewMode;
@@ -22,10 +23,11 @@ interface Props {
   clientFilter: string[];
   onClientFilter: (ids: string[]) => void;
   sync: Sync;
+  update: AppUpdate;
 }
 
 export default function TopBar(props: Props) {
-  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, canUndo, onUndo, searchRef, clients, clientFilter, onClientFilter, sync } = props;
+  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, canUndo, onUndo, searchRef, clients, clientFilter, onClientFilter, sync, update } = props;
 
   // Projects and clients aren't stretches of time, so there is nothing for the
   // arrows to step over while they're on screen.
@@ -134,6 +136,20 @@ export default function TopBar(props: Props) {
         >
           ⚙
         </button>
+
+        {/* Only while one is actually held back. Taking it is a reload, so it
+            is offered rather than done to you — though leaving the app for
+            anything else takes it too, which is how a phone gets it. */}
+        {update.ready && (
+          <button
+            type="button"
+            className="ghost accent update"
+            onClick={update.apply}
+            title="A newer version of the planner is ready. Reload onto it."
+          >
+            ↻ <span className="update-label">Update</span>
+          </button>
+        )}
 
         <SyncBadge sync={sync} />
       </div>

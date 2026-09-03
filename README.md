@@ -420,6 +420,15 @@ dragging and scrolling don't fight each other. Add it to your home screen and
 it runs full-screen, and the app shell is cached so it opens without a signal —
 the board itself is already on the device.
 
+Because an app on a home screen is never closed, only switched away from, it
+would otherwise keep running whatever build it was opened on: a browser looks
+for a new version when it navigates somewhere, and resuming an app is not
+navigating. So it goes looking itself — every half hour it's open, and every
+time it comes back to the foreground. A build it finds is swapped in while the
+app is in the background, so you come back to it already there and never lose
+what you were typing to a reload. An **Update** button appears in the toolbar
+meanwhile, for when you'd rather have it immediately.
+
 ## Your data, on more than one device
 
 Cards live in `localStorage` and the app works with no server at all — that is
@@ -473,6 +482,10 @@ a CI deploy ask for a confirmation it cannot get, and fail.
 Worth knowing: KV is eventually consistent, so a write can take a few seconds
 to reach another region, in which case the other device sees the older board
 until it next polls, or is offered the conflict choice.
+
+A deploy reaches a device the next time the app is open and looks — within half
+an hour, or straight away if it has just been brought back to the foreground.
+Nothing has to be closed and reopened, and phones are not a special case.
 
 ## The login
 
