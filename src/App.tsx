@@ -352,6 +352,26 @@ export default function App() {
     [settings.defaultCategory],
   );
 
+  /** From a card's right-click menu: the next card for the same work, without
+   *  hunting up the project it belongs to. Same project, same clients, its
+   *  own blank title and day — it lands right after the card it came from. */
+  const newCardFromCard = useCallback(
+    (id: string) => {
+      const source = board.cards[id];
+      if (!source) return;
+      const lane = laneOf(board, id) ?? BACKLOG;
+      const card = newCard('', {
+        colour: source.colour,
+        projectId: source.projectId,
+        clients: [...source.clients],
+      });
+      const index = (board.lanes[lane] ?? []).indexOf(id) + 1;
+      dispatch({ type: 'add', lane, card, index });
+      setOpenId(card.id);
+    },
+    [board],
+  );
+
   const setCategory = useCallback(
     (id: CategoryId, patch: Partial<Category>) => dispatch({ type: 'category', id, patch }),
     [],
@@ -670,6 +690,8 @@ export default function App() {
                   capacity={settings.capacity}
                   onOpen={setOpenId}
                   onQuickAdd={quickAdd}
+                  onNewFromProject={newCardFromCard}
+                  onPatch={patchCard}
                 />
 
                 {days.map((day) => (
@@ -688,6 +710,8 @@ export default function App() {
                     onOpen={setOpenId}
                     onQuickAdd={quickAdd}
                     onOpenDay={openDay}
+                    onNewFromProject={newCardFromCard}
+                    onPatch={patchCard}
                   />
                 ))}
               </main>

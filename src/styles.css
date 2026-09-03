@@ -174,6 +174,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ghost.accent { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .ghost.danger:hover { color: var(--danger); border-color: var(--danger); }
 
+/* An icon standing in for a label needs a square target rather than the
+   padding sized for text either side of it, and room for the icon itself to
+   read clearly rather than being squeezed to text height. */
+.ghost.icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; }
+
 .search {
   width: 190px;
   padding: 5px 10px;
@@ -436,6 +441,60 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .tcard.s-blocked .tcard-body { background: var(--s-blocked-tint); }
 .tcard.s-doing .tcard-body { background: var(--c-tint); }
 
+/* ---------- card right-click menu ---------- */
+
+/* Portalled to the body and positioned from JS, so only its own box needs
+   styling here — where it lands is worked out at the call site. */
+.cardmenu {
+  position: fixed;
+  z-index: 70;
+  min-width: 208px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+
+.cardmenu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  font-size: var(--t-body);
+}
+
+.cardmenu-item:hover:not(:disabled) { background: var(--surface-2); }
+.cardmenu-item:disabled { opacity: 0.45; cursor: default; }
+.cardmenu-item.is-on { background: var(--surface-2); font-weight: 620; }
+
+.cardmenu-sep { height: 1px; margin: 4px 2px; background: var(--line-soft); }
+
+.cardmenu-label {
+  padding: 4px 9px 2px;
+  font-size: var(--t-micro);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.cardmenu-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--s-todo); }
+.cardmenu-dot.p-doing { background: var(--s-doing); }
+.cardmenu-dot.p-blocked { background: var(--s-blocked); }
+.cardmenu-dot.p-done { background: var(--s-done); }
+
 /* ---------- drawer ---------- */
 
 .drawer {
@@ -466,6 +525,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .drawer-where { color: var(--text-dim); font-size: var(--t-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .drawer-head-actions { margin-left: auto; display: flex; gap: 6px; }
 .drawer-head-actions .ghost { padding: 4px 8px; font-size: var(--t-body); }
+.drawer-head-actions .ghost.icon { padding: 0; }
 
 .drawer-body { padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
 
@@ -1575,20 +1635,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .modal.is-card { width: min(560px, 100%); max-height: min(88vh, 860px); }
 .modal.is-card .drawer-body { padding: 14px; overflow-y: auto; }
 
-/* Full screen: the same head + body, blown up to cover the viewport —
-   works the same whether the card normally opens as a drawer or a modal. */
+/* Full screen: the same head + body, floated at 90% of the viewport rather
+   than covering it edge to edge — works the same whether the card normally
+   opens as a drawer or a modal. `inset: 5%` on a fixed box is a 90%-sized
+   box centred in it, without working out the size by hand. */
 .modal.is-full,
 .drawer.is-full {
   position: fixed;
-  inset: 0;
+  inset: 5%;
   z-index: 60;
-  width: 100%;
-  height: 100%;
-  max-height: 100%;
+  width: auto;
+  height: auto;
+  max-height: none;
   margin: 0;
-  border: 0;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
 }
+
+/* The drawer's border is normally just the one edge against the board; full
+   screen floats it free on every side, so it needs the rest of the frame. */
+.drawer.is-full { border: 1px solid var(--line); }
 
 /* ---------- narrow screens, new views ---------- */
 
