@@ -31,10 +31,14 @@ export interface LaneProps {
   onQuickAdd: (lane: LaneId, title: string) => void;
   /** Open this day on its own timeline. Absent on the backlog. */
   onOpenDay?: (day: LaneId) => void;
+  /** Start a fresh card carrying a card's project and clients — from its
+   *  right-click menu. */
+  onNewFromProject: (id: string) => void;
+  onPatch: (id: string, patch: Partial<Card>) => void;
 }
 
 export default function Lane(props: LaneProps) {
-  const { id, title, subtitle, cards, matches, isToday, isPast, isWeekend, isBacklog, capacity, events = [], onOpen, onQuickAdd, onOpenDay } = props;
+  const { id, title, subtitle, cards, matches, isToday, isPast, isWeekend, isBacklog, capacity, events = [], onOpen, onQuickAdd, onOpenDay, onNewFromProject, onPatch } = props;
   const { setNodeRef, isOver } = useDroppable({ id: `lane:${id}`, data: { type: 'lane', lane: id } });
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
@@ -140,6 +144,8 @@ export default function Lane(props: LaneProps) {
                 lane={id}
                 dimmed={matches ? !matches.has(card.id) : false}
                 onOpen={onOpen}
+                onNewFromProject={onNewFromProject}
+                onPatch={onPatch}
               />
             </div>
           ))}

@@ -9,6 +9,31 @@ import { addDays, formatFullDay, formatTime, todayKey } from '../dates';
 const RichText = lazy(() => import('./RichText'));
 
 const ESTIMATES = [0, 0.25, 0.5, 1, 2, 3, 4, 6, 8];
+
+/** Four corner brackets implying a square — reads as "expand" at a glance,
+ *  where the diagonal-arrow glyph it replaced didn't. */
+function ExpandIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="8 3 3 3 3 8" />
+      <polyline points="21 8 21 3 16 3" />
+      <polyline points="3 16 3 21 8 21" />
+      <polyline points="16 21 21 21 21 16" />
+    </svg>
+  );
+}
+
+/** The same brackets, turned to point inward — "put this back". */
+function CollapseIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="3 8 8 8 8 3" />
+      <polyline points="16 3 16 8 21 8" />
+      <polyline points="21 16 16 16 16 21" />
+      <polyline points="8 21 8 16 3 16" />
+    </svg>
+  );
+}
 const DESCRIPTION_DEBOUNCE_MS = 300;
 
 export interface CardPanelProps {
@@ -326,13 +351,13 @@ function CardHead({
         </button>
         <button
           type="button"
-          className="ghost"
+          className="ghost icon"
           onClick={onToggleFullScreen}
           title={fullScreen ? 'Exit full screen' : 'Full screen'}
           aria-label={fullScreen ? 'Exit full screen' : 'Full screen'}
           aria-pressed={fullScreen}
         >
-          {fullScreen ? '⤡' : '⤢'}
+          {fullScreen ? <CollapseIcon /> : <ExpandIcon />}
         </button>
         <button type="button" className="ghost" onClick={onClose} title="Close (Esc)" aria-label="Close">
           ✕
@@ -383,7 +408,7 @@ export default function CardPanel(props: CardPanelProps) {
     );
   }
 
-  return (
+  const drawer = (
     <aside
       className={fullScreen ? 'drawer is-full' : 'drawer'}
       aria-label="Card details"
@@ -392,5 +417,20 @@ export default function CardPanel(props: CardPanelProps) {
       <CardHead {...props} fullScreen={fullScreen} onToggleFullScreen={onToggleFullScreen} />
       <CardBody {...props} />
     </aside>
+  );
+
+  // Full screen floats the drawer over the board rather than covering it
+  // edge to edge, so — same as the modal — it gets a backdrop behind it.
+  // Clicking that backdrop steps back out of full screen, not out of the card.
+  if (!fullScreen) return drawer;
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setFullScreen(false);
+      }}
+    >
+      {drawer}
+    </div>
   );
 }

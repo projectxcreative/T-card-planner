@@ -4,6 +4,27 @@ import { VIEWS, VIEW_LABELS, type Client, type Settings, type ViewMode } from '.
 import type { Sync } from '../sync';
 import type { AppUpdate } from '../updates';
 
+/** A plain ring with even spokes reads as a cog at a glance; the unicode ⚙
+ *  it replaced renders as a cramped, blurry knot at this size in most fonts. */
+function SettingsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3.2" />
+      <circle cx="12" cy="12" r="7.4" />
+      <g strokeWidth="2.4">
+        <line x1="12" y1="2.2" x2="12" y2="5.1" />
+        <line x1="12" y1="18.9" x2="12" y2="21.8" />
+        <line x1="21.8" y1="12" x2="18.9" y2="12" />
+        <line x1="5.1" y1="12" x2="2.2" y2="12" />
+        <line x1="18.8" y1="5.2" x2="16.7" y2="7.3" />
+        <line x1="7.3" y1="16.7" x2="5.2" y2="18.8" />
+        <line x1="18.8" y1="18.8" x2="16.7" y2="16.7" />
+        <line x1="7.3" y1="7.3" x2="5.2" y2="5.2" />
+      </g>
+    </svg>
+  );
+}
+
 interface Props {
   view: ViewMode;
   onView: (view: ViewMode) => void;
@@ -146,12 +167,12 @@ export default function TopBar(props: Props) {
 
         <button
           type="button"
-          className="ghost"
+          className="ghost icon"
           onClick={onOpenSettings}
           title="Categories, clients, the week, backups"
           aria-label="Settings"
         >
-          ⚙
+          <SettingsIcon />
         </button>
 
         {/* Only while one is actually held back. Taking it is a reload, so it
