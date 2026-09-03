@@ -1638,7 +1638,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .settings-more > summary:hover { color: var(--text); }
 .settings-more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
 
-/* ---------- the weekend toggle ---------- */
+/* ---------- the toolbar tick boxes ---------- */
 
 /* A checkbox that behaves like the toolbar around it: a button, so it keeps
    the same height and hover as its neighbours, with a box drawn on the front. */
@@ -1795,7 +1795,7 @@ button.chip:hover { transform: translateY(-1px); }
 /**
  * After Kaliber10000 (k10k.net, 1998–2011), whose signature was a page broken
  * into a mathematical structure of rectangles by hairline rules — tight
- * uppercase micro-type, numbered modules, everything squared and measured.
+ * uppercase micro-type, everything squared and measured.
  *
  * It is a skin rather than a theme, and the two are separate axes: a theme
  * swaps the palette, a skin swaps shape and type, and either skin wears either
@@ -1841,20 +1841,18 @@ button.chip:hover { transform: translateY(-1px); }
 
 /* The columns stop being separate rounded panels and butt together, their
    borders collapsing into the single hairlines that divide the sheet. */
-:root[data-skin='draft'] .board { gap: 0; counter-reset: lane; }
+:root[data-skin='draft'] .board { gap: 0; }
 :root[data-skin='draft'] .lane + .lane { margin-left: -1px; }
 
 /* A dashed edge reads as a torn one where every other border is a ruled line,
-   so the backlog is told apart by its fill and its 00 instead. */
+   so the backlog is told apart by its fill instead. */
 :root[data-skin='draft'] .lane.is-backlog { border-style: solid; }
 
 /* A column with something to say draws over its neighbours' shared edge. */
 :root[data-skin='draft'] .lane.is-today { z-index: 1; }
 :root[data-skin='draft'] .lane.is-over { z-index: 2; }
 
-/* ---- numbered, letterspaced column heads ---- */
-
-:root[data-skin='draft'] .lane:not(.is-backlog) { counter-increment: lane; }
+/* ---- letterspaced column heads ---- */
 
 :root[data-skin='draft'] .lane-head {
   padding: 7px 10px 6px;
@@ -1871,23 +1869,6 @@ button.chip:hover { transform: translateY(-1px); }
      below its neighbours' — which is the one thing this grid cannot have. The
      subtitle already truncates, so it is the part that gives. */
   white-space: nowrap;
-}
-
-:root[data-skin='draft'] .lane:not(.is-backlog) .lane-title::before {
-  content: counter(lane, decimal-leading-zero) ' / ';
-  font-family: var(--font-data);
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--text-faint);
-}
-
-/* The backlog is the column before the week starts, so it is numbered 00. */
-:root[data-skin='draft'] .lane.is-backlog .lane-title::before {
-  content: '00 / ';
-  font-family: var(--font-data);
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--text-faint);
 }
 
 :root[data-skin='draft'] .lane-sub,

@@ -36,6 +36,8 @@ export default function TopBar(props: Props) {
   const filterable = dated;
   // Only the week and the month draw columns the weekend could be one of.
   const showsWeekend = view === 'week' || view === 'month';
+  // Only the week draws card faces, so it is the only view the excerpt is on.
+  const showsCards = view === 'week';
   const stepName = view === 'day' ? 'day' : view === 'month' ? 'month' : 'week';
 
   return (
@@ -84,6 +86,21 @@ export default function TopBar(props: Props) {
             >
               <span className="toggle-box" aria-hidden="true" />
               Weekends
+            </button>
+          )}
+
+          {/* The same switch as the one in Settings, put where you actually
+              want it: beside the board it makes taller or shorter. */}
+          {showsCards && (
+            <button
+              type="button"
+              className={settings.showDescription ? 'ghost accent toggle is-on' : 'ghost toggle'}
+              aria-pressed={settings.showDescription}
+              onClick={() => onSettings({ showDescription: !settings.showDescription })}
+              title={settings.showDescription ? 'Hide the excerpt under each card title' : 'Show the excerpt under each card title'}
+            >
+              <span className="toggle-box" aria-hidden="true" />
+              Details
             </button>
           )}
         </div>

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Card, CardSurface, CategoryId, LaneId, Status } from '../types';
-import { BACKLOG, CATEGORY_IDS, STATUSES, STATUS_LABELS, categoryLabel } from '../types';
+import { BACKLOG, CATEGORY_IDS, STATUSES, STATUS_LABELS, categoryLabel, isClosedStage } from '../types';
 import { useCategories } from '../categories';
 import { useLookups } from '../lookups';
 import { addDays, formatFullDay, formatTime, todayKey } from '../dates';
@@ -109,8 +109,15 @@ function CardBody(props: CardPanelProps) {
   useGrowToFit(titleRef, card.title);
 
   const scheduled = lane !== BACKLOG ? lane : '';
+  // Archived and finished projects drop out of the picker, so it stays the
+  // list of things you could actually put work against. Whatever the card is
+  // already on stays listed either way — a card must never quietly lose the
+  // project it names just because that project moved on.
   const openProjects = Object.values(projects)
-    .filter((project) => !project.archived || project.id === card.projectId)
+    .filter(
+      (project) =>
+        project.id === card.projectId || (!project.archived && !isClosedStage(project.stage)),
+    )
     .sort((a, b) => a.title.localeCompare(b.title));
 
   const toggleClient = (id: string) => {
