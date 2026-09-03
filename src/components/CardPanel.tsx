@@ -297,7 +297,15 @@ function CardBody(props: CardPanelProps) {
   );
 }
 
-function CardHead({ card, lane, onDuplicate, onDelete, onClose }: CardPanelProps) {
+function CardHead({
+  card,
+  lane,
+  fullScreen,
+  onToggleFullScreen,
+  onDuplicate,
+  onDelete,
+  onClose,
+}: CardPanelProps & { fullScreen: boolean; onToggleFullScreen: () => void }) {
   return (
     <header className="drawer-head">
       <span className={`drawer-swatch c-${card.colour}`} aria-hidden="true" />
@@ -316,6 +324,16 @@ function CardHead({ card, lane, onDuplicate, onDelete, onClose }: CardPanelProps
         >
           Delete
         </button>
+        <button
+          type="button"
+          className="ghost"
+          onClick={onToggleFullScreen}
+          title={fullScreen ? 'Exit full screen' : 'Full screen'}
+          aria-label={fullScreen ? 'Exit full screen' : 'Full screen'}
+          aria-pressed={fullScreen}
+        >
+          {fullScreen ? '⤡' : '⤢'}
+        </button>
         <button type="button" className="ghost" onClick={onClose} title="Close (Esc)" aria-label="Close">
           ✕
         </button>
@@ -330,12 +348,16 @@ function CardHead({ card, lane, onDuplicate, onDelete, onClose }: CardPanelProps
  */
 export default function CardPanel(props: CardPanelProps) {
   const { surface, onClose } = props;
+  const [fullScreen, setFullScreen] = useState(false);
+  const onToggleFullScreen = () => setFullScreen((value) => !value);
 
   const stopEscape = (event: React.KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      onClose();
-    }
+    if (event.key !== 'Escape') return;
+    event.stopPropagation();
+    // Full screen is a step back toward the normal view, not a reason to
+    // close the card outright.
+    if (fullScreen) setFullScreen(false);
+    else onClose();
   };
 
   if (surface === 'modal') {
@@ -347,8 +369,14 @@ export default function CardPanel(props: CardPanelProps) {
           if (event.target === event.currentTarget) onClose();
         }}
       >
-        <section className="modal is-card" role="dialog" aria-modal="true" aria-label="Card details" onKeyDown={stopEscape}>
-          <CardHead {...props} />
+        <section
+          className={fullScreen ? 'modal is-card is-full' : 'modal is-card'}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Card details"
+          onKeyDown={stopEscape}
+        >
+          <CardHead {...props} fullScreen={fullScreen} onToggleFullScreen={onToggleFullScreen} />
           <CardBody {...props} />
         </section>
       </div>
@@ -356,8 +384,12 @@ export default function CardPanel(props: CardPanelProps) {
   }
 
   return (
-    <aside className="drawer" aria-label="Card details" onKeyDown={stopEscape}>
-      <CardHead {...props} />
+    <aside
+      className={fullScreen ? 'drawer is-full' : 'drawer'}
+      aria-label="Card details"
+      onKeyDown={stopEscape}
+    >
+      <CardHead {...props} fullScreen={fullScreen} onToggleFullScreen={onToggleFullScreen} />
       <CardBody {...props} />
     </aside>
   );
