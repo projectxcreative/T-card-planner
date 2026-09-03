@@ -1426,6 +1426,120 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .split-addcard .lane-add-input { flex: 1; min-width: 0; }
 .split-addcard input[type='date'] { padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); }
 
+/* ---------- what a project comes to ---------- */
+
+/* A row of small figures under the project's title: the numbers you would
+   otherwise work out by counting its cards, worked out for you. */
+.projstats { margin: 0 0 4px; }
+
+.projstats-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.projstat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
+.projstat-label {
+  font-size: var(--t-micro);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.projstat-value { font-size: var(--t-lead); font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.projstat-value.is-on { color: var(--s-done); }
+/* A date range is two words where the others are one figure, so it steps down
+   a size rather than wrapping the tile onto a second line. */
+.projstat-value.is-small { font-size: var(--t-body); font-weight: 600; }
+.projstat-of { color: var(--text-faint); font-weight: 500; }
+.projstat-note { font-size: var(--t-micro); color: var(--text-faint); }
+
+/* Hours done against hours planned — the same bar a day carries in the week,
+   for the same reason: the shape of the thing before the figures. */
+.projstats-bar { height: 3px; margin-top: 8px; background: var(--line-soft); border-radius: var(--radius-xs); overflow: hidden; }
+.projstats-bar span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--s-done) 70%, var(--surface)), var(--s-done));
+  transition: width 260ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Hours are not money, so their row sits apart from the four that are. */
+.totals li.is-hours { grid-column: 1 / -1; flex-direction: row; align-items: baseline; justify-content: space-between; gap: 8px; }
+.totals-of { font-size: var(--t-meta); font-weight: 500; color: var(--text-faint); }
+
+/* ---------- attaching a card that already exists ---------- */
+
+/* The list hangs off the field rather than pushing the cards below it down the
+   page, so the section keeps its height while you pick. */
+.split-attach { position: relative; margin-top: 6px; }
+.split-attach .lane-add-input { width: 100%; }
+
+.split-attach-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 260px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+
+.split-attach-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font-size: var(--t-body);
+}
+
+.split-attach-row.is-on { background: var(--surface-2); }
+.split-attach-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--c); }
+.split-attach-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Whose card it is today, and which day it is on. Both are the reasons you
+   would think twice before taking it, so both are legible rather than faint. */
+.split-attach-owner {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-meta);
+  color: var(--text-dim);
+}
+
+.split-attach-day { flex: none; font-size: var(--t-meta); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.split-attach-empty { padding: 8px 7px; font-size: var(--t-meta); color: var(--text-faint); }
+
 .split-cards { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 
 .split-card {
@@ -1638,7 +1752,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .settings-more > summary:hover { color: var(--text); }
 .settings-more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
 
-/* ---------- the weekend toggle ---------- */
+/* ---------- the toolbar tick boxes ---------- */
 
 /* A checkbox that behaves like the toolbar around it: a button, so it keeps
    the same height and hover as its neighbours, with a box drawn on the front. */
@@ -1795,7 +1909,7 @@ button.chip:hover { transform: translateY(-1px); }
 /**
  * After Kaliber10000 (k10k.net, 1998–2011), whose signature was a page broken
  * into a mathematical structure of rectangles by hairline rules — tight
- * uppercase micro-type, numbered modules, everything squared and measured.
+ * uppercase micro-type, everything squared and measured.
  *
  * It is a skin rather than a theme, and the two are separate axes: a theme
  * swaps the palette, a skin swaps shape and type, and either skin wears either
@@ -1841,20 +1955,18 @@ button.chip:hover { transform: translateY(-1px); }
 
 /* The columns stop being separate rounded panels and butt together, their
    borders collapsing into the single hairlines that divide the sheet. */
-:root[data-skin='draft'] .board { gap: 0; counter-reset: lane; }
+:root[data-skin='draft'] .board { gap: 0; }
 :root[data-skin='draft'] .lane + .lane { margin-left: -1px; }
 
 /* A dashed edge reads as a torn one where every other border is a ruled line,
-   so the backlog is told apart by its fill and its 00 instead. */
+   so the backlog is told apart by its fill instead. */
 :root[data-skin='draft'] .lane.is-backlog { border-style: solid; }
 
 /* A column with something to say draws over its neighbours' shared edge. */
 :root[data-skin='draft'] .lane.is-today { z-index: 1; }
 :root[data-skin='draft'] .lane.is-over { z-index: 2; }
 
-/* ---- numbered, letterspaced column heads ---- */
-
-:root[data-skin='draft'] .lane:not(.is-backlog) { counter-increment: lane; }
+/* ---- letterspaced column heads ---- */
 
 :root[data-skin='draft'] .lane-head {
   padding: 7px 10px 6px;
@@ -1873,23 +1985,6 @@ button.chip:hover { transform: translateY(-1px); }
   white-space: nowrap;
 }
 
-:root[data-skin='draft'] .lane:not(.is-backlog) .lane-title::before {
-  content: counter(lane, decimal-leading-zero) ' / ';
-  font-family: var(--font-data);
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--text-faint);
-}
-
-/* The backlog is the column before the week starts, so it is numbered 00. */
-:root[data-skin='draft'] .lane.is-backlog .lane-title::before {
-  content: '00 / ';
-  font-family: var(--font-data);
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--text-faint);
-}
-
 :root[data-skin='draft'] .lane-sub,
 :root[data-skin='draft'] .lane-stats { font-size: var(--t-micro); }
 
@@ -1897,7 +1992,8 @@ button.chip:hover { transform: translateY(-1px); }
 
 :root[data-skin='draft'] :is(
   .lane-hours, .lane-count, .lane-foot-value, .lane-cal-time,
-  .tcard-time, .tcard-est, .money, .slot-time, .monthcell-day, .monthcell-logged
+  .tcard-time, .tcard-est, .money, .slot-time, .monthcell-day, .monthcell-logged,
+  .totals-value, .projstat-value
 ) {
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
@@ -1947,6 +2043,10 @@ button.chip:hover { transform: translateY(-1px); }
 :root[data-skin='draft'] .lane-load { margin: 0 10px 8px; }
 :root[data-skin='draft'] .lane-load span { background: var(--s-done); }
 :root[data-skin='draft'] .lane-load.is-over-capacity span { background: var(--s-blocked); }
+
+/* The project's bar is the same instrument, so it is drawn the same way. */
+:root[data-skin='draft'] :is(.projstats-bar, .projstats-bar span) { border-radius: 0; }
+:root[data-skin='draft'] .projstats-bar span { background: var(--s-done); }
 
 /* The chips stop being lozenges and the pointer stops nudging them about. */
 :root[data-skin='draft'] button.chip:hover { transform: none; }

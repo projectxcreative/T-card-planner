@@ -133,6 +133,17 @@ export const isLost = (stage: ProjectStage) => stage === 'lost';
  *  finished, and the invoice is the next thing that has to happen to it. */
 export const isBillable = (stage: ProjectStage) => stage === 'delivered';
 
+/**
+ * A project no new work is going to be planned against: it has been billed,
+ * paid for, or lost. The card picker leaves these out — they only ever grow in
+ * number, and a list that grows forever is a list you stop reading.
+ *
+ * "Delivered" is deliberately not one of them: the work is done but the
+ * invoice hasn't gone out, and late amends still want somewhere to go.
+ */
+export const isClosedStage = (stage: ProjectStage) =>
+  stage === 'invoiced' || stage === 'paid' || stage === 'lost';
+
 /** How the billing view splits a month. Narrower than the money groups, which
  *  fold "delivered" in with work still under way — for billing, delivered is
  *  precisely the row you are looking for. */
