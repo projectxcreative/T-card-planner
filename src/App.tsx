@@ -30,6 +30,7 @@ import BillingView from './components/BillingView';
 import { CardFace } from './components/TCard';
 import type { Action } from './store';
 import {
+  attachableCards,
   billingMonths,
   byStage,
   cardsIn,
@@ -420,6 +421,14 @@ export default function App() {
   );
 
   const projectCards = useCallback((projectId: string) => cardsOfProject(board, projectId), [board]);
+  const projectSpare = useCallback((projectId: string) => attachableCards(board, projectId), [board]);
+
+  /** Claiming a card that already exists for a project. Only the project moves:
+   *  the card keeps its day, its hours and its own client tags. */
+  const attachProjectCard = useCallback(
+    (cardId: string, projectId: string) => patchCard(cardId, { projectId }),
+    [patchCard],
+  );
   const months = useMemo(() => billingMonths(board), [board]);
   const clientProjects = useCallback((clientId: string) => projectsOfClient(board, clientId), [board]);
   const clientCards = useCallback((clientId: string) => cardsOfClient(board, clientId), [board]);
@@ -731,6 +740,8 @@ export default function App() {
                 onOpenCard={setOpenId}
                 onAddCard={addProjectCard}
                 onMoveCard={moveCard}
+                attachable={projectSpare}
+                onAttachCard={attachProjectCard}
               />
             </main>
           )}

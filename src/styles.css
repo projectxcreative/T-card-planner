@@ -1426,6 +1426,64 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .split-addcard .lane-add-input { flex: 1; min-width: 0; }
 .split-addcard input[type='date'] { padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); }
 
+/* ---------- attaching a card that already exists ---------- */
+
+/* The list hangs off the field rather than pushing the cards below it down the
+   page, so the section keeps its height while you pick. */
+.split-attach { position: relative; margin-top: 6px; }
+.split-attach .lane-add-input { width: 100%; }
+
+.split-attach-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 260px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+
+.split-attach-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font-size: var(--t-body);
+}
+
+.split-attach-row.is-on { background: var(--surface-2); }
+.split-attach-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--c); }
+.split-attach-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Whose card it is today, and which day it is on. Both are the reasons you
+   would think twice before taking it, so both are legible rather than faint. */
+.split-attach-owner {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-meta);
+  color: var(--text-dim);
+}
+
+.split-attach-day { flex: none; font-size: var(--t-meta); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.split-attach-empty { padding: 8px 7px; font-size: var(--t-meta); color: var(--text-faint); }
+
 .split-cards { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 
 .split-card {

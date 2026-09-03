@@ -143,6 +143,20 @@ export function cardsOfProject(state: BoardState, projectId: string): { card: Ca
   return scan(state, (card) => card.projectId === projectId);
 }
 
+/**
+ * The cards a project could pull in: everything not already on it.
+ *
+ * Unattached cards come first, because that is nearly always what you are
+ * after — a card typed straight onto the board before the project existed.
+ * Cards already spoken for follow, so moving one across is possible but has to
+ * be a decision, taken with the project it would leave named on the row.
+ */
+export function attachableCards(state: BoardState, projectId: string): { card: Card; lane: LaneId }[] {
+  return scan(state, (card) => card.projectId !== projectId).sort(
+    (a, b) => Number(Boolean(a.card.projectId)) - Number(Boolean(b.card.projectId)),
+  );
+}
+
 export function projectsOfClient(state: BoardState, clientId: string): Project[] {
   return Object.values(state.projects)
     .filter((project) => project.clientId === clientId)

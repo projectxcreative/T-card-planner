@@ -34,6 +34,9 @@ interface Props {
   onOpenCard: (id: string) => void;
   onAddCard: (projectId: string, title: string, day: LaneId) => void;
   onMoveCard: (id: string, lane: LaneId) => void;
+  /** Every card that isn't already on this project, unattached ones first. */
+  attachable: (projectId: string) => { card: Card; lane: LaneId }[];
+  onAttachCard: (cardId: string, projectId: string) => void;
 }
 
 /** The money box is typed into, so it can't be driven straight off the number:
@@ -84,8 +87,129 @@ function ProjectDescription({ project, onPatch }: { project: Project; onPatch: P
   );
 }
 
+/** How many matches the picker will show at once. Past this you are better off
+ *  typing another word than reading a longer list. */
+const ATTACH_LIMIT = 8;
+
+/**
+ * Pulls a card that already exists onto this project.
+ *
+ * Projects are usually named after the work has started, so the cards for one
+ * are often already sitting on the board. Retyping them would leave the
+ * originals behind; this claims them where they are, keeping their day, their
+ * hours and whatever has already been written on them.
+ */
+function AttachCard({
+  project,
+  options,
+  projects,
+  onAttach,
+}: {
+  project: Project;
+  options: { card: Card; lane: LaneId }[];
+  projects: Record<string, Project>;
+  onAttach: Props['onAttachCard'];
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [cursor, setCursor] = useState(0);
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      if (!box.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  // A fresh project starts empty on purpose: the list opens on focus, so the
+  // first few cards are one click away without typing anything.
+  const needle = query.trim().toLowerCase();
+  const matches = useMemo(
+    () =>
+      options
+        .filter(({ card }) => !needle || (card.title || 'Untitled card').toLowerCase().includes(needle))
+        .slice(0, ATTACH_LIMIT),
+    [options, needle],
+  );
+
+  const attach = (id: string) => {
+    onAttach(id, project.id);
+    setQuery('');
+    setCursor(0);
+    setOpen(false);
+  };
+
+  if (options.length === 0) return null;
+
+  return (
+    <div className="split-attach" ref={box}>
+      <input
+        className="lane-add-input"
+        value={query}
+        placeholder="…or attach a card already on the board"
+        aria-label="Attach an existing card to this project"
+        onFocus={() => setOpen(true)}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setCursor(0);
+          setOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setOpen(true);
+            setCursor((current) => Math.min(current + 1, matches.length - 1));
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setCursor((current) => Math.max(current - 1, 0));
+          } else if (event.key === 'Enter') {
+            event.preventDefault();
+            if (matches[cursor]) attach(matches[cursor].card.id);
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            setOpen(false);
+          }
+        }}
+      />
+
+      {open && (
+        <ul className="split-attach-pop" role="listbox" aria-label="Cards you can attach">
+          {matches.length === 0 && <li className="split-attach-empty">No card matches “{query.trim()}”.</li>}
+          {matches.map(({ card, lane }, index) => {
+            const owner = card.projectId ? projects[card.projectId] : undefined;
+            return (
+              <li key={card.id}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={index === cursor}
+                  className={index === cursor ? 'split-attach-row is-on' : 'split-attach-row'}
+                  onMouseEnter={() => setCursor(index)}
+                  onClick={() => attach(card.id)}
+                  title={owner ? `Move this card from ${owner.title || 'Untitled project'}` : undefined}
+                >
+                  <span className={`split-attach-dot c-${card.colour}`} aria-hidden="true" />
+                  <span className="split-attach-title">{card.title || 'Untitled card'}</span>
+                  {/* A card already on another project can still be taken, but
+                      it says whose it is first — a silent move is how work
+                      goes missing from someone else's plan. */}
+                  {owner && <span className="split-attach-owner">{owner.title || 'Untitled project'}</span>}
+                  <span className="split-attach-day">{lane === BACKLOG ? 'Backlog' : formatDayNumber(lane)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function ProjectsView(props: Props) {
-  const { projects, cardsOf, selected, onSelect, onCreate, onPatch, onDelete, onOpenCard, onAddCard, onMoveCard } = props;
+  const { projects, cardsOf, selected, onSelect, onCreate, onPatch, onDelete, onOpenCard, onAddCard, onMoveCard, attachable, onAttachCard } = props;
   const categories = useCategories();
   const { clients, clientOrder } = useLookups();
   const [newTitle, setNewTitle] = useState('');
@@ -95,6 +219,8 @@ export default function ProjectsView(props: Props) {
   const active = selected ? projects.find((project) => project.id === selected) ?? null : null;
   const activeClient = active?.clientId ? clients[active.clientId] : undefined;
   const cards = useMemo(() => (active ? cardsOf(active.id) : []), [active, cardsOf]);
+  const spare = useMemo(() => (active ? attachable(active.id) : []), [active, attachable]);
+  const byId = useMemo(() => Object.fromEntries(projects.map((project) => [project.id, project])), [projects]);
 
   const done = cards.filter((entry) => entry.card.status === 'done').length;
   const hours = cards.reduce((sum, entry) => sum + entry.card.estimate, 0);
@@ -351,6 +477,8 @@ export default function ProjectsView(props: Props) {
                     onChange={(event) => setCardDay(event.target.value)}
                   />
                 </div>
+
+                <AttachCard key={active.id} project={active} options={spare} projects={byId} onAttach={onAttachCard} />
 
                 <ul className="split-cards">
                   {cards.length === 0 && <li className="split-empty">No cards on this project yet.</li>}
