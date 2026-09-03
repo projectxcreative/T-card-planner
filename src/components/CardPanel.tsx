@@ -304,15 +304,6 @@ function CardHead({
       <span className={`drawer-swatch c-${card.colour}`} aria-hidden="true" />
       <span className="drawer-where">{lane === BACKLOG ? 'Backlog' : formatFullDay(lane)}</span>
       <div className="drawer-head-actions">
-        <button
-          type="button"
-          className="ghost"
-          onClick={onToggleFullScreen}
-          title={fullScreen ? 'Exit full screen' : 'Full screen'}
-          aria-pressed={fullScreen}
-        >
-          {fullScreen ? 'Exit full screen' : 'Full screen'}
-        </button>
         <button type="button" className="ghost" onClick={() => onDuplicate(card.id)} title="Duplicate card">
           Duplicate
         </button>
@@ -325,6 +316,16 @@ function CardHead({
           title="Delete card"
         >
           Delete
+        </button>
+        <button
+          type="button"
+          className="ghost"
+          onClick={onToggleFullScreen}
+          title={fullScreen ? 'Exit full screen' : 'Full screen'}
+          aria-label={fullScreen ? 'Exit full screen' : 'Full screen'}
+          aria-pressed={fullScreen}
+        >
+          {fullScreen ? '⤡' : '⤢'}
         </button>
         <button type="button" className="ghost" onClick={onClose} title="Close (Esc)" aria-label="Close">
           ✕
