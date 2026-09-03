@@ -1426,6 +1426,62 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .split-addcard .lane-add-input { flex: 1; min-width: 0; }
 .split-addcard input[type='date'] { padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); }
 
+/* ---------- what a project comes to ---------- */
+
+/* A row of small figures under the project's title: the numbers you would
+   otherwise work out by counting its cards, worked out for you. */
+.projstats { margin: 0 0 4px; }
+
+.projstats-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.projstat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
+.projstat-label {
+  font-size: var(--t-micro);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.projstat-value { font-size: var(--t-lead); font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.projstat-value.is-on { color: var(--s-done); }
+/* A date range is two words where the others are one figure, so it steps down
+   a size rather than wrapping the tile onto a second line. */
+.projstat-value.is-small { font-size: var(--t-body); font-weight: 600; }
+.projstat-of { color: var(--text-faint); font-weight: 500; }
+.projstat-note { font-size: var(--t-micro); color: var(--text-faint); }
+
+/* Hours done against hours planned — the same bar a day carries in the week,
+   for the same reason: the shape of the thing before the figures. */
+.projstats-bar { height: 3px; margin-top: 8px; background: var(--line-soft); border-radius: var(--radius-xs); overflow: hidden; }
+.projstats-bar span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--s-done) 70%, var(--surface)), var(--s-done));
+  transition: width 260ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Hours are not money, so their row sits apart from the four that are. */
+.totals li.is-hours { grid-column: 1 / -1; flex-direction: row; align-items: baseline; justify-content: space-between; gap: 8px; }
+.totals-of { font-size: var(--t-meta); font-weight: 500; color: var(--text-faint); }
+
 /* ---------- attaching a card that already exists ---------- */
 
 /* The list hangs off the field rather than pushing the cards below it down the
@@ -1936,7 +1992,8 @@ button.chip:hover { transform: translateY(-1px); }
 
 :root[data-skin='draft'] :is(
   .lane-hours, .lane-count, .lane-foot-value, .lane-cal-time,
-  .tcard-time, .tcard-est, .money, .slot-time, .monthcell-day, .monthcell-logged
+  .tcard-time, .tcard-est, .money, .slot-time, .monthcell-day, .monthcell-logged,
+  .totals-value, .projstat-value
 ) {
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
@@ -1986,6 +2043,10 @@ button.chip:hover { transform: translateY(-1px); }
 :root[data-skin='draft'] .lane-load { margin: 0 10px 8px; }
 :root[data-skin='draft'] .lane-load span { background: var(--s-done); }
 :root[data-skin='draft'] .lane-load.is-over-capacity span { background: var(--s-blocked); }
+
+/* The project's bar is the same instrument, so it is drawn the same way. */
+:root[data-skin='draft'] :is(.projstats-bar, .projstats-bar span) { border-radius: 0; }
+:root[data-skin='draft'] .projstats-bar span { background: var(--s-done); }
 
 /* The chips stop being lozenges and the pointer stops nudging them about. */
 :root[data-skin='draft'] button.chip:hover { transform: none; }

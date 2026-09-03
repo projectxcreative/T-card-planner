@@ -87,6 +87,134 @@ function ProjectDescription({ project, onPatch }: { project: Project; onPatch: P
   );
 }
 
+/** What a set of cards adds up to. Hours are split the way the lanes split
+ *  them: an estimate on an open card is time still owed, the same estimate on a
+ *  finished one is time spent. */
+interface Tally {
+  cards: number;
+  done: number;
+  /** Hours still to do, hours already done, and the two together. */
+  planned: number;
+  logged: number;
+  hours: number;
+  /** Cards carrying no estimate. The hours above are only as good as this. */
+  unsized: number;
+  /** The first and last day the project has a card on, backlog aside. */
+  first: LaneId | null;
+  last: LaneId | null;
+}
+
+function tally(entries: { card: Card; lane: LaneId }[]): Tally {
+  const sums: Tally = {
+    cards: entries.length,
+    done: 0,
+    planned: 0,
+    logged: 0,
+    hours: 0,
+    unsized: 0,
+    first: null,
+    last: null,
+  };
+  for (const { card, lane } of entries) {
+    if (card.status === 'done') {
+      sums.done += 1;
+      sums.logged += card.estimate;
+    } else {
+      sums.planned += card.estimate;
+    }
+    sums.hours += card.estimate;
+    if (card.estimate === 0) sums.unsized += 1;
+    // Lane keys are YYYY-MM-DD, so they compare as dates do. The backlog has no
+    // day and so belongs to neither end of the span.
+    if (lane !== BACKLOG) {
+      if (!sums.first || lane < sums.first) sums.first = lane;
+      if (!sums.last || lane > sums.last) sums.last = lane;
+    }
+  }
+  return sums;
+}
+
+/**
+ * What the project comes to: its cards, its hours, and what those two make of
+ * the money on it.
+ *
+ * The rate is the number worth having. A project's value on its own says
+ * nothing about whether it is worth doing — value over the hours it will take
+ * is the figure you compare one piece of work against another with, and it is
+ * the one nobody works out by hand.
+ */
+function ProjectStats({ project, stats }: { project: Project; stats: Tally }) {
+  const rate = stats.hours > 0 && project.value > 0 ? project.value / stats.hours : null;
+  // Hours are the honest measure of how far along something is; card counts
+  // treat a ten-minute job and a two-day one as the same thing. Unsized cards
+  // leave nothing to measure, so the count stands in.
+  const progress =
+    stats.hours > 0 ? stats.logged / stats.hours : stats.cards > 0 ? stats.done / stats.cards : 0;
+
+  return (
+    <div className="projstats">
+      <ul className="projstats-grid">
+        <li className="projstat" title={`${stats.done} of ${stats.cards} cards finished`}>
+          <span className="projstat-label">Cards</span>
+          <span className="projstat-value">
+            {stats.done}<span className="projstat-of">/{stats.cards}</span>
+          </span>
+          <span className="projstat-note">done</span>
+        </li>
+
+        <li className="projstat" title="Hours on the cards still open">
+          <span className="projstat-label">To do</span>
+          <span className="projstat-value">{formatEstimate(stats.planned) || '—'}</span>
+          <span className="projstat-note">{stats.cards - stats.done} open</span>
+        </li>
+
+        <li className="projstat" title="Hours on the cards already finished">
+          <span className="projstat-label">Logged</span>
+          <span className={stats.logged > 0 ? 'projstat-value is-on' : 'projstat-value'}>
+            {formatEstimate(stats.logged) || '—'}
+          </span>
+          <span className="projstat-note">done</span>
+        </li>
+
+        <li className="projstat" title="Every hour on this project's cards, finished or not">
+          <span className="projstat-label">Total</span>
+          <span className="projstat-value">{formatEstimate(stats.hours) || '—'}</span>
+          <span className="projstat-note">{stats.unsized > 0 ? `${stats.unsized} unsized` : 'estimated'}</span>
+        </li>
+
+        <li
+          className="projstat"
+          title={
+            rate
+              ? `${formatMoney(project.value)} over ${formatEstimate(stats.hours)} of work`
+              : 'Give the project a value and its cards an estimate to see what it pays an hour'
+          }
+        >
+          <span className="projstat-label">Rate</span>
+          <span className="projstat-value">{rate ? `${formatMoney(Math.round(rate))}` : '—'}</span>
+          <span className="projstat-note">per hour</span>
+        </li>
+
+        <li
+          className="projstat"
+          title={stats.first ? 'The first and last day this project has a card on' : 'Nothing scheduled yet'}
+        >
+          <span className="projstat-label">Runs</span>
+          <span className="projstat-value is-small">
+            {stats.first ? formatDayNumber(stats.first) : '—'}
+            {stats.last && stats.last !== stats.first ? ` – ${formatDayNumber(stats.last)}` : ''}
+          </span>
+          <span className="projstat-note">{stats.first ? 'scheduled' : 'unscheduled'}</span>
+        </li>
+      </ul>
+
+      <div className="projstats-bar" aria-hidden="true">
+        <span style={{ width: `${Math.min(progress, 1) * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
 /** How many matches the picker will show at once. Past this you are better off
  *  typing another word than reading a longer list. */
 const ATTACH_LIMIT = 8;
@@ -222,8 +350,31 @@ export default function ProjectsView(props: Props) {
   const spare = useMemo(() => (active ? attachable(active.id) : []), [active, attachable]);
   const byId = useMemo(() => Object.fromEntries(projects.map((project) => [project.id, project])), [projects]);
 
-  const done = cards.filter((entry) => entry.card.status === 'done').length;
-  const hours = cards.reduce((sum, entry) => sum + entry.card.estimate, 0);
+  /** Every project's tally, worked out once: the list shows a project's hours
+   *  on its row, the detail shows the whole breakdown, and the head sums them. */
+  const tallies = useMemo(() => {
+    const out: Record<string, Tally> = {};
+    for (const project of projects) out[project.id] = tally(cardsOf(project.id));
+    return out;
+  }, [projects, cardsOf]);
+
+  const stats = active ? tallies[active.id] ?? tally(cards) : null;
+
+  /** Hours across everything still live, so the list head answers "how much
+   *  work is actually on the books" beside what it is worth. Archived projects
+   *  are out of it, exactly as they are out of the money above. */
+  const workload = useMemo(() => {
+    let logged = 0;
+    let hours = 0;
+    for (const project of projects) {
+      if (project.archived) continue;
+      const sums = tallies[project.id];
+      if (!sums) continue;
+      logged += sums.logged;
+      hours += sums.hours;
+    }
+    return { logged, hours };
+  }, [projects, tallies]);
 
   /** The pipeline, in money: what might come in, what is committed, what has
    *  been billed and not paid, and what has landed. Archived projects are out
@@ -263,6 +414,13 @@ export default function ProjectsView(props: Props) {
               </span>
             </li>
           ))}
+          <li className="is-hours" title="Hours logged, of every hour on a live project's cards">
+            <span className="totals-label">Hours</span>
+            <span className="totals-value">
+              {formatEstimate(workload.logged) || '0h'}
+              <span className="totals-of"> of {formatEstimate(workload.hours) || '0h'}</span>
+            </span>
+          </li>
         </ul>
 
         <div className="split-new">
@@ -283,7 +441,7 @@ export default function ProjectsView(props: Props) {
         <ul className="split-items">
           {projects.length === 0 && <li className="split-empty">No projects yet.</li>}
           {projects.map((project, index) => {
-            const own = cardsOf(project.id);
+            const own = tallies[project.id] ?? tally(cardsOf(project.id));
             const client = project.clientId ? clients[project.clientId] : undefined;
             const classes = ['split-item', `c-${project.colour}`];
             if (project.id === selected) classes.push('is-on');
@@ -303,7 +461,8 @@ export default function ProjectsView(props: Props) {
                 <button type="button" className={classes.join(' ')} onClick={() => onSelect(project.id)}>
                   <span className="split-item-title">{project.title || 'Untitled project'}</span>
                   <span className="split-item-meta">
-                    {formatMoney(project.value)} · {own.length} card{own.length === 1 ? '' : 's'}
+                    {formatMoney(project.value)} · {own.cards} card{own.cards === 1 ? '' : 's'}
+                    {own.hours > 0 ? ` · ${formatEstimate(own.hours)}` : ''}
                     {project.archived ? ' · archived' : ''}
                   </span>
                   <span className="split-item-clients">
@@ -365,6 +524,8 @@ export default function ProjectsView(props: Props) {
             </header>
 
             <div className="split-detail-body">
+              {stats && <ProjectStats project={active} stats={stats} />}
+
               <div className="field-row">
                 <label className="field">
                   <span className="field-label">Stage</span>
@@ -451,9 +612,7 @@ export default function ProjectsView(props: Props) {
               </div>
 
               <div className="field">
-                <span className="field-label">
-                  Cards · {cards.length} · {done} done{hours > 0 ? ` · ${formatEstimate(hours)}` : ''}
-                </span>
+                <span className="field-label">Cards</span>
 
                 <div className="split-addcard">
                   <input
