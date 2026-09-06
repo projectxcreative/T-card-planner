@@ -30,15 +30,36 @@ interface Meta {
   lastSyncedAt: string | null;
 }
 
-/** What the Worker says about who is asking. Null until the first answer. */
+/** What `/api/session` actually answers with — see worker/index.ts. */
+interface RawSession {
+  access: boolean;
+  signedIn: boolean;
+  email: string | null;
+  configured: boolean;
+  accounts: { needsSetup: boolean; user: { email: string } | null };
+}
+
+/** What the Worker says about who is asking. Null until the first answer.
+ *  A native account is folded into the same two fields Access used to own
+ *  alone, so everything below — `enabled`, the status machine, the badge —
+ *  doesn't need to know which of the two let this device in. */
 interface Session {
   /** The Worker is behind Cloudflare Access. */
   access: boolean;
-  /** This browser carries a login Access signed, so no token is needed. */
+  /** Either Access vetted this browser, or a native account is signed in. */
   signedIn: boolean;
   email: string | null;
   /** The Worker has some way of letting you in at all. */
   configured: boolean;
+}
+
+function toSession(raw: RawSession): Session {
+  return {
+    access: raw.access,
+    signedIn: raw.signedIn || Boolean(raw.accounts.user),
+    email: raw.accounts.user?.email ?? raw.email,
+    configured: raw.configured || Boolean(raw.accounts.user) || !raw.accounts.needsSetup,
+  };
 }
 
 /** What being redirected to the Access login tells us, on its own. */
@@ -272,7 +293,7 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
         return;
       }
       if (!response.ok) return;
-      const next = (await response.json()) as Session;
+      const next = toSession((await response.json()) as RawSession);
       setSession((prev) => sameSession(prev, next));
     } catch {
       // Offline. Whatever we knew last still holds.

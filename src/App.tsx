@@ -22,6 +22,8 @@ import Lane from './components/Lane';
 import CardPanel from './components/CardPanel';
 import TopBar from './components/TopBar';
 import SettingsDialog from './components/SettingsDialog';
+import UsersAdminDialog from './components/auth/UsersAdminDialog';
+import { useAccount } from './accountContext';
 import DayView from './components/DayView';
 import MonthView from './components/MonthView';
 import ProjectsView from './components/ProjectsView';
@@ -138,6 +140,8 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [showUsers, setShowUsers] = useState(false);
+  const account = useAccount();
   const [past, setPast] = useState<BoardState[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -659,6 +663,7 @@ export default function App() {
             onClientFilter={setClientFilter}
             sync={sync}
             update={update}
+            onManageUsers={() => setShowUsers(true)}
           />
 
           <ConflictBar sync={sync} />
@@ -837,6 +842,10 @@ export default function App() {
               onImport={importBoard}
               onClose={() => setShowSettings(false)}
             />
+          )}
+
+          {showUsers && account.user && (
+            <UsersAdminDialog currentUserId={account.user.id} onClose={() => setShowUsers(false)} />
           )}
         </div>
       </LookupsProvider>

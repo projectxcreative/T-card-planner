@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useAccount } from '../accountContext';
 import type { Sync, SyncStatus } from '../sync';
 
 const LABELS: Record<SyncStatus, string> = {
@@ -36,6 +37,9 @@ export default function SyncBadge({ sync }: { sync: Sync }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const wrapRef = useRef<HTMLDivElement>(null);
+  // A native account owns its own sign-in and sign-out, in the account menu
+  // next door — this badge stays about syncing, not about who's signed in.
+  const nativeAccount = Boolean(useAccount().user);
 
   useEffect(() => {
     if (!open) return;
@@ -74,7 +78,7 @@ export default function SyncBadge({ sync }: { sync: Sync }) {
             <p className="sync-detail dim">Last saved to the server {agoLabel(sync.lastSyncedAt)}.</p>
           )}
 
-          {sync.email && (
+          {sync.email && !nativeAccount && (
             <p className="sync-detail dim">
               Signed in as <strong className="sync-who">{sync.email}</strong>.
             </p>
@@ -91,9 +95,14 @@ export default function SyncBadge({ sync }: { sync: Sync }) {
               <button type="button" className="ghost" onClick={() => { sync.syncNow(); setOpen(false); }}>
                 Sync now
               </button>
-              <button type="button" className="ghost danger" onClick={sync.signOut}>
-                Sign out
-              </button>
+              {/* A native account signs out from the account menu next door —
+                  this would otherwise send it to Cloudflare Access's own
+                  logout, which isn't what's signing it in. */}
+              {!nativeAccount && (
+                <button type="button" className="ghost danger" onClick={sync.signOut}>
+                  Sign out
+                </button>
+              )}
             </div>
           ) : sync.hasToken ? (
             <div className="sync-actions">

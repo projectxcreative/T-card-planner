@@ -1,4 +1,5 @@
 import SyncBadge from './SyncBadge';
+import AccountMenu from './AccountMenu';
 import ClientFilter from './ClientFilter';
 import { VIEWS, VIEW_LABELS, type Client, type Settings, type ViewMode } from '../types';
 import type { Sync } from '../sync';
@@ -45,10 +46,11 @@ interface Props {
   onClientFilter: (ids: string[]) => void;
   sync: Sync;
   update: AppUpdate;
+  onManageUsers: () => void;
 }
 
 export default function TopBar(props: Props) {
-  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, canUndo, onUndo, searchRef, clients, clientFilter, onClientFilter, sync, update } = props;
+  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, canUndo, onUndo, searchRef, clients, clientFilter, onClientFilter, sync, update, onManageUsers } = props;
 
   // Projects and clients aren't stretches of time, so there is nothing for the
   // arrows to step over while they're on screen.
@@ -190,6 +192,7 @@ export default function TopBar(props: Props) {
         )}
 
         <SyncBadge sync={sync} />
+        <AccountMenu onManageUsers={onManageUsers} />
       </div>
      </div>
     </header>
