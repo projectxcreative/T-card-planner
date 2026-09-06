@@ -1,107 +1,59 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { AccountContext } from '../../accountContext';
-import { fetchSession, type SessionInfo } from '../../authClient';
-import AcceptInviteView from './AcceptInviteView';
-import AdminSetupView from './AdminSetupView';
-import ForgotPasswordView from './ForgotPasswordView';
-import LoginView from './LoginView';
-import ResetPasswordView from './ResetPasswordView';
+import { ClerkProvider, Show, SignIn, SignUp, UserButton, useAuth } from '@clerk/react';
+import { dark } from '@clerk/themes';
+import App from '../../App';
 
-type Phase = 'loading' | 'offline' | 'ready';
-
-const tokenFromQuery = () => new URLSearchParams(window.location.search).get('token') ?? '';
-
-/** Sends the browser back to the plain board URL once a link-based flow
- *  (accept-invite, reset-password) has done its job. */
-function goHome() {
-  window.history.replaceState({}, '', '/');
-}
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 /**
- * Decides what the app shows before there's a board to show at all: the
- * one-time admin setup, sign in, an invite link, a reset link, or — once
- * someone is in — the board itself.
+ * Clerk does the actual sign-in, invite-only sign-up, and password reset —
+ * this component just decides which of Clerk's own screens to show, and
+ * bridges its session token into the board's own sync (see `sync.ts`).
  *
- * Two things are allowed to reach the board unquestioned: a device with no
- * Worker to ask at all (`npm run dev` with no `dev:worker` — the board still
- * works from local storage, so a login screen with nothing behind it would
- * only get in the way), and a request Cloudflare Access already vetted at the
- * edge before the app ever loaded. Everything else goes through here.
+ * Who gets to sign up at all, who's an admin, and inviting the beta — all of
+ * that lives in Clerk's own dashboard (Restricted sign-up mode plus its
+ * Invitations page), not in this app. See the README's Accounts section.
  */
-export default function AuthGate({ children }: { children: ReactNode }) {
-  const [phase, setPhase] = useState<Phase>('loading');
-  const [session, setSession] = useState<SessionInfo | null>(null);
-  const [showForgot, setShowForgot] = useState(false);
+export default function AuthGate() {
+  // Unset means accounts are off: the board runs exactly as it did before
+  // Clerk existed, on local storage plus whatever Access or BOARD_TOKEN the
+  // Worker has — the normal shape of `npm run dev` with nothing configured.
+  if (!PUBLISHABLE_KEY) return <App />;
 
-  const refresh = useCallback(async () => {
-    try {
-      const info = await fetchSession();
-      setSession(info);
-      setPhase('ready');
-    } catch {
-      setPhase('offline');
-    }
-  }, []);
+  // Read once, at boot: the sign-in screen has no theme toggle of its own,
+  // and the app's own toggle only appears once you're past it.
+  const isDark = document.documentElement.dataset.theme === 'dark';
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  return (
+    <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/" appearance={isDark ? dark : undefined}>
+      <Show when="signed-in">
+        <SignedInApp />
+      </Show>
+      <Show when="signed-out">
+        <SignInOrUp />
+      </Show>
+    </ClerkProvider>
+  );
+}
 
-  const path = window.location.pathname;
+function SignedInApp() {
+  const { getToken } = useAuth();
+  return <App accountSlot={<UserButton />} getClerkToken={getToken} />;
+}
 
-  if (path === '/accept-invite') {
-    return (
-      <AcceptInviteView
-        token={tokenFromQuery()}
-        onAccepted={() => {
-          goHome();
-          void refresh();
-        }}
-        onCancel={goHome}
-      />
-    );
-  }
+/** Clerk appends `__clerk_ticket` to the link it emails for an invitation —
+ *  whoever arrives with one is completing a sign-up, not logging in. Sign-up
+ *  is Restricted in the Clerk dashboard, so there's no self-serve path to it
+ *  without one: this is the only way `<SignUp/>` ever renders. */
+const hasInviteTicket = () => new URLSearchParams(window.location.search).has('__clerk_ticket');
 
-  if (path === '/reset-password') {
-    return (
-      <ResetPasswordView
-        token={tokenFromQuery()}
-        onReset={() => {
-          goHome();
-          void refresh();
-        }}
-        onCancel={goHome}
-      />
-    );
-  }
-
-  if (phase === 'loading') {
-    return (
-      <div className="auth-shell">
-        <p className="auth-loading" role="status" aria-live="polite">
-          Loading…
-        </p>
+function SignInOrUp() {
+  return (
+    <div className="auth-shell">
+      <div className="auth-brand">
+        <img className="brand-mark" src="/logo.svg" alt="" width={22} height={22} />
+        <span className="brand-name">T-Card Planner</span>
       </div>
-    );
-  }
-
-  if (phase === 'offline' || !session) {
-    return <AccountContext.Provider value={{ user: null, refresh }}>{children}</AccountContext.Provider>;
-  }
-
-  // Access already decided at the edge — the SPA wouldn't have loaded at all
-  // if it hadn't. A native account is the same kind of "already decided".
-  if (session.accounts.user || (session.access && session.signedIn)) {
-    return <AccountContext.Provider value={{ user: session.accounts.user, refresh }}>{children}</AccountContext.Provider>;
-  }
-
-  if (session.accounts.needsSetup) {
-    return <AdminSetupView onDone={() => void refresh()} />;
-  }
-
-  return showForgot ? (
-    <ForgotPasswordView onBack={() => setShowForgot(false)} />
-  ) : (
-    <LoginView onSignedIn={() => void refresh()} onForgotPassword={() => setShowForgot(true)} />
+      {hasInviteTicket() ? <SignUp /> : <SignIn />}
+    </div>
   );
 }

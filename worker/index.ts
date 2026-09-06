@@ -1,57 +1,29 @@
 /**
- * Serves the built board app and its APIs: a two-call board-sync endpoint,
- * and native accounts (invite-only signup, sessions, password reset).
+ * Serves the built board app and a two-call sync API.
  *
- * Each signed-in account gets its own board — a JSON blob in KV keyed by
- * account id. Writes carry the revision they were based on, so a device that
- * has been offline (or is just a stale tab) is told its base is old rather
- * than silently flattening the newer board.
+ * Each signed-in person gets their own board — a JSON blob in KV, keyed by
+ * whoever is asking. Writes carry the revision they were based on, so a
+ * device that has been offline (or is just a stale tab) is told its base is
+ * old rather than silently flattening the newer board.
  *
- * Three ways in are recognised, checked in this order: the session cookie a
- * native login sets, the JWT Cloudflare Access puts on a request it let
+ * Three ways in are recognised, checked in this order: a Clerk session token
+ * (Clerk does the actual sign-in, invite-only sign-up and password reset, in
+ * the browser — this Worker only verifies the token it hands the frontend;
+ * see `clerk.ts`), the JWT Cloudflare Access attaches to a request it let
  * through at the edge (see `access.ts`), and a shared `BOARD_TOKEN` for
- * callers that are not a browser — a backup script, or `wrangler dev` with
- * neither of the others set up. Only the first — a real account — gets a
- * board of its own; Access and the token still share the one legacy board,
- * exactly as before accounts existed, so an existing single-owner deployment
- * doesn't change behaviour just by upgrading.
+ * callers that are not a browser — a backup script, or a `wrangler dev` run
+ * with none of the others set up. A Clerk identity gets a board of its own;
+ * Access and the token still share one legacy board between them, exactly as
+ * before Clerk existed, so a single-owner deployment on either of those isn't
+ * changed by Clerk being available.
  */
 
 import { emailAllowed, teamHost, verifyAccess, type AccessIdentity, type AccessResult } from './access';
-import {
-  MAX_ACCOUNTS,
-  SESSION_TTL_SECONDS,
-  accountBoardKey,
-  acceptInvite,
-  createInvite,
-  createPasswordReset,
-  createSession,
-  destroySession,
-  getAccountByEmail,
-  getAccountById,
-  getInvite,
-  listAccounts,
-  listInvites,
-  needsSetup,
-  publicUser,
-  resetPassword,
-  resolveSession,
-  revokeInvite,
-  setPassword,
-  setRole,
-  setStatus,
-  setupAdmin,
-  verifyLogin,
-  type Account,
-  type Role,
-  type UserStatus,
-} from './accounts';
-import { hashPassword, isValidEmail, passwordProblem, verifyPassword } from './auth';
-import { emailConfigured, sendInviteEmail, sendResetEmail } from './email';
+import { verifyClerkSession, type ClerkIdentity, type ClerkResult } from './clerk';
 
 export interface Env {
   BOARD: KVNamespace;
-  /** Shared secret for non-browser callers, and a fallback when nothing else is set up. */
+  /** Shared secret for non-browser callers, and the only guard when neither Access nor Clerk is set up. */
   BOARD_TOKEN?: string;
   /** Lets one namespace hold several *legacy* (Access/token) boards if you ever want a second. */
   BOARD_KEY?: string;
@@ -61,13 +33,8 @@ export interface Env {
   ACCESS_AUD?: string;
   /** Optional extra gate: only these emails, whatever the Access policy says. */
   ACCESS_EMAILS?: string;
-  /** Reserves the one-time admin account bootstrap for this address. See accounts.ts. */
-  ADMIN_EMAIL?: string;
-  /** Base URL for invite/reset links in emails. Defaults to the request's own origin. */
-  APP_URL?: string;
-  /** Set this and EMAIL_FROM to have invite/reset emails send themselves, via Resend. */
-  RESEND_API_KEY?: string;
-  EMAIL_FROM?: string;
+  /** Clerk's Frontend API URL for this instance, e.g. `https://your-app.clerk.accounts.dev`. */
+  CLERK_ISSUER?: string;
   ASSETS: Fetcher;
 }
 
@@ -76,8 +43,6 @@ interface StoredBoard {
   updatedAt: string;
   board: unknown;
 }
-
-const SESSION_COOKIE = 'tcard_session';
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -107,51 +72,6 @@ function bearer(request: Request): string | null {
   return scheme.toLowerCase() === 'bearer' && rest.length > 0 ? rest.join(' ') : null;
 }
 
-function cookieValue(request: Request, name: string): string | null {
-  const header = request.headers.get('cookie');
-  if (!header) return null;
-  for (const part of header.split(';')) {
-    const separator = part.indexOf('=');
-    if (separator === -1) continue;
-    if (part.slice(0, separator).trim() === name) {
-      try {
-        return decodeURIComponent(part.slice(separator + 1).trim());
-      } catch {
-        return null;
-      }
-    }
-  }
-  return null;
-}
-
-function setCookie(name: string, value: string, opts: { maxAge: number; secure: boolean }): string {
-  const parts = [`${name}=${encodeURIComponent(value)}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${opts.maxAge}`];
-  if (opts.secure) parts.push('Secure');
-  return parts.join('; ');
-}
-
-function clearCookie(name: string, opts: { secure: boolean }): string {
-  const parts = [`${name}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
-  if (opts.secure) parts.push('Secure');
-  return parts.join('; ');
-}
-
-const isSecureRequest = (request: Request): boolean => new URL(request.url).protocol === 'https:';
-
-/** Where invite and reset links point. A configured APP_URL beats guessing
- *  from the request, since a request can arrive by a path Access or a proxy
- *  rewrote. */
-function appOrigin(request: Request, env: Env): string {
-  const configured = env.APP_URL?.trim().replace(/\/+$/, '');
-  return configured || new URL(request.url).origin;
-}
-
-async function identifyAccount(request: Request, env: Env): Promise<Account | null> {
-  const token = cookieValue(request, SESSION_COOKIE);
-  if (!token) return null;
-  return resolveSession(env.BOARD, token);
-}
-
 /**
  * Runs the Access check, and applies the optional email allow list on top.
  *
@@ -168,31 +88,38 @@ async function checkAccess(request: Request, env: Env): Promise<AccessResult | n
   return result;
 }
 
+async function checkClerk(request: Request, env: Env): Promise<ClerkResult | null> {
+  if (!env.CLERK_ISSUER) return null;
+  return verifyClerkSession(request, env.CLERK_ISSUER);
+}
+
 type BoardActor =
-  | { kind: 'account'; account: Account }
+  | { kind: 'clerk'; identity: ClerkIdentity }
   | { kind: 'access'; identity: AccessIdentity }
   | { kind: 'token' };
 
+/** Where a Clerk user's own board lives, separate from the legacy shared board. */
+const clerkBoardKey = (sub: string): string => `clerkBoard:${sub}`;
+
 function boardKeyFor(env: Env, actor: BoardActor): string {
-  return actor.kind === 'account' ? accountBoardKey(actor.account.id) : env.BOARD_KEY || 'board';
+  return actor.kind === 'clerk' ? clerkBoardKey(actor.identity.sub) : env.BOARD_KEY || 'board';
 }
 
 /**
- * Decides whether a board request may proceed, and who is asking.
+ * Decides whether an API call may proceed, and returns who is asking.
  *
- * A native account session wins if there is one; otherwise the Access login a
- * browser arrives with, or the shared token a script carries. A caller with
- * none of the three sees 503 only when there is truly no way in yet — no
- * legacy auth configured *and* nobody has ever set up an account — so that a
- * half-finished setup reads as "not set up" rather than "wrong password".
+ * Any of three credentials is enough: a Clerk session, the Access login a
+ * browser arrives with, or the shared token a script carries. 503 when none
+ * of the three is configured at all, so a half-finished setup reads as "not
+ * set up" rather than "wrong password".
  */
-async function authoriseBoard(
+function authorise(
   request: Request,
   env: Env,
   access: AccessResult | null,
-  account: Account | null,
-): Promise<BoardActor | Response> {
-  if (account) return { kind: 'account', account };
+  clerk: ClerkResult | null,
+): BoardActor | Response {
+  if (clerk?.ok) return { kind: 'clerk', identity: clerk.identity };
   if (access?.ok) return { kind: 'access', identity: access.identity };
 
   if (env.BOARD_TOKEN) {
@@ -200,23 +127,26 @@ async function authoriseBoard(
     if (supplied && secretsMatch(supplied, env.BOARD_TOKEN)) return { kind: 'token' };
   }
 
-  if (!env.BOARD_TOKEN && !accessConfigured(env) && (await needsSetup(env.BOARD))) {
+  if (!env.BOARD_TOKEN && !accessConfigured(env) && !env.CLERK_ISSUER) {
     return json(
       {
         error: 'not-configured',
-        message: 'This planner has no admin account yet. Open it in a browser to set one up.',
+        message: 'This Worker has no login configured yet: set up Clerk, Cloudflare Access, or a BOARD_TOKEN secret.',
       },
       503,
     );
   }
 
   // A JWT that merely ran out is a different problem from a wrong one: the
-  // browser only needs to visit Access again, which the app can offer to do.
+  // browser only needs a fresh one, which the app can offer to fetch.
   if (access && !access.ok && access.reason === 'expired') {
     return json({ error: 'signed-out', message: 'Your Cloudflare Access session has expired.' }, 401);
   }
+  if (clerk && !clerk.ok && clerk.reason === 'expired') {
+    return json({ error: 'signed-out', message: 'Your session has expired. Sign in again.' }, 401);
+  }
 
-  return json({ error: 'unauthorised', message: 'Sign in to continue.' }, 401);
+  return json({ error: 'unauthorised', message: 'Wrong or missing credentials.' }, 401);
 }
 
 async function readBoard(env: Env, key: string): Promise<StoredBoard | null> {
@@ -228,6 +158,7 @@ async function handleApi(
   env: Env,
   path: string,
   access: AccessResult | null,
+  clerk: ClerkResult | null,
 ): Promise<Response> {
   // Deliberately open: it answers whether the Worker is up and what it expects
   // you to log in with, and nothing about the board or about you. It is what
@@ -235,32 +166,29 @@ async function handleApi(
   if (path === '/api/health') {
     return json({
       ok: true,
-      configured: Boolean(env.BOARD_TOKEN) || accessConfigured(env) || !(await needsSetup(env.BOARD)),
+      configured: Boolean(env.BOARD_TOKEN) || accessConfigured(env) || Boolean(env.CLERK_ISSUER),
       access: accessConfigured(env),
+      clerk: Boolean(env.CLERK_ISSUER),
     });
   }
 
   // Who the app is talking to, so it can say so and stop asking for a token
   // it no longer needs. Only ever reports an identity that just verified.
+  // Clerk's own identity (email, name) is known to the frontend directly
+  // from Clerk's SDK, so it isn't repeated here.
   if (path === '/api/session') {
-    const account = await identifyAccount(request, env);
     return json({
       access: accessConfigured(env),
       signedIn: Boolean(access?.ok),
       email: access?.ok ? access.identity.email : null,
-      tokenRequired: !access?.ok && Boolean(env.BOARD_TOKEN),
-      configured: Boolean(env.BOARD_TOKEN) || accessConfigured(env),
-      accounts: {
-        needsSetup: account ? false : await needsSetup(env.BOARD),
-        user: account ? publicUser(account) : null,
-      },
+      tokenRequired: !access?.ok && !clerk?.ok && Boolean(env.BOARD_TOKEN),
+      configured: Boolean(env.BOARD_TOKEN) || accessConfigured(env) || Boolean(env.CLERK_ISSUER),
     });
   }
 
   if (path !== '/api/board') return json({ error: 'not-found' }, 404);
 
-  const account = await identifyAccount(request, env);
-  const allowed = await authoriseBoard(request, env, access, account);
+  const allowed = authorise(request, env, access, clerk);
   if (allowed instanceof Response) return allowed;
   const boardKey = boardKeyFor(env, allowed);
 
@@ -302,256 +230,13 @@ async function handleApi(
   return json({ error: 'method-not-allowed' }, 405, { allow: 'GET, PUT' });
 }
 
-async function readJson<T>(request: Request): Promise<T | null> {
-  try {
-    return (await request.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Native account auth: setup, login, invite acceptance, password reset.
- *
- * Invite-only by design — there is no open signup endpoint. The cap on the
- * whole beta is enforced in `accounts.ts`, at invite time and again at
- * acceptance, so a burst of last-minute invites can't overshoot it.
- */
-async function handleAuth(request: Request, env: Env, path: string): Promise<Response> {
-  const secure = isSecureRequest(request);
-  const signIn = async (account: Account, status = 200) => {
-    const token = await createSession(env.BOARD, account.id);
-    return json({ user: publicUser(account) }, status, {
-      'set-cookie': setCookie(SESSION_COOKIE, token, { maxAge: SESSION_TTL_SECONDS, secure }),
-    });
-  };
-
-  if (path === '/api/auth/setup' && request.method === 'POST') {
-    const body = await readJson<{ email?: string; name?: string; password?: string }>(request);
-    if (!body) return json({ error: 'bad-json' }, 400);
-    const email = (body.email || '').trim();
-    const name = (body.name || '').trim();
-    if (!isValidEmail(email)) return json({ error: 'bad-email', message: 'Enter a valid email address.' }, 400);
-    if (!name) return json({ error: 'bad-name', message: 'Enter your name.' }, 400);
-    const problem = passwordProblem(body.password || '');
-    if (problem) return json({ error: 'bad-password', message: problem }, 400);
-
-    const result = await setupAdmin(env.BOARD, env.ADMIN_EMAIL, {
-      email,
-      name,
-      passwordHash: await hashPassword(body.password!),
-    });
-    if (result === 'exists') {
-      return json({ error: 'already-set-up', message: 'This planner already has an admin account — sign in instead.' }, 409);
-    }
-    if (result === 'wrong-email') {
-      return json(
-        { error: 'wrong-email', message: 'This planner reserves the admin account for a specific email address.' },
-        403,
-      );
-    }
-    return signIn(result, 201);
-  }
-
-  if (path === '/api/auth/login' && request.method === 'POST') {
-    const body = await readJson<{ email?: string; password?: string }>(request);
-    if (!body) return json({ error: 'bad-json' }, 400);
-    const account = await verifyLogin(env.BOARD, (body.email || '').trim(), body.password || '');
-    if (!account) return json({ error: 'invalid-credentials', message: 'Wrong email or password.' }, 401);
-    if (account.status !== 'active') {
-      return json({ error: 'disabled', message: 'This account has been disabled. Contact your admin.' }, 403);
-    }
-    return signIn(account);
-  }
-
-  if (path === '/api/auth/logout' && request.method === 'POST') {
-    const token = cookieValue(request, SESSION_COOKIE);
-    if (token) await destroySession(env.BOARD, token);
-    return json({ ok: true }, 200, { 'set-cookie': clearCookie(SESSION_COOKIE, { secure }) });
-  }
-
-  if (path === '/api/auth/invite' && request.method === 'GET') {
-    const token = new URL(request.url).searchParams.get('token') || '';
-    const invite = await getInvite(env.BOARD, token);
-    if (!invite) return json({ error: 'invalid-invite', message: 'This invite link is invalid or has expired.' }, 404);
-    return json({ email: invite.email, role: invite.role });
-  }
-
-  if (path === '/api/auth/accept-invite' && request.method === 'POST') {
-    const body = await readJson<{ token?: string; name?: string; password?: string }>(request);
-    if (!body) return json({ error: 'bad-json' }, 400);
-    const name = (body.name || '').trim();
-    if (!name) return json({ error: 'bad-name', message: 'Enter your name.' }, 400);
-    const problem = passwordProblem(body.password || '');
-    if (problem) return json({ error: 'bad-password', message: problem }, 400);
-
-    const result = await acceptInvite(env.BOARD, (body.token || '').trim(), {
-      name,
-      passwordHash: await hashPassword(body.password!),
-    });
-    if (result === 'invalid') {
-      return json(
-        { error: 'invalid-invite', message: 'This invite link is invalid or has expired. Ask your admin for a new one.' },
-        400,
-      );
-    }
-    if (result === 'exists') {
-      return json({ error: 'already-exists', message: 'An account already exists for this email — sign in instead.' }, 409);
-    }
-    if (result === 'full') {
-      return json({ error: 'full', message: `This beta is capped at ${MAX_ACCOUNTS} accounts.` }, 409);
-    }
-    return signIn(result, 201);
-  }
-
-  if (path === '/api/auth/forgot-password' && request.method === 'POST') {
-    const body = await readJson<{ email?: string }>(request);
-    const email = (body?.email || '').trim();
-    if (isValidEmail(email)) {
-      const account = await getAccountByEmail(env.BOARD, email);
-      if (account && account.status === 'active') {
-        const token = await createPasswordReset(env.BOARD, account.id);
-        await sendResetEmail(env, account.email, `${appOrigin(request, env)}/reset-password?token=${token}`);
-      }
-    }
-    // The same response either way — whether an account exists for that email
-    // is not something a caller who isn't signed in gets to learn.
-    return json({
-      ok: true,
-      message: emailConfigured(env)
-        ? 'If that email has an account, a reset link is on its way.'
-        : "Email isn't set up on this planner yet — ask your admin for a reset link instead.",
-    });
-  }
-
-  if (path === '/api/auth/reset-password' && request.method === 'POST') {
-    const body = await readJson<{ token?: string; password?: string }>(request);
-    if (!body) return json({ error: 'bad-json' }, 400);
-    const problem = passwordProblem(body.password || '');
-    if (problem) return json({ error: 'bad-password', message: problem }, 400);
-
-    const result = await resetPassword(env.BOARD, (body.token || '').trim(), await hashPassword(body.password!));
-    if (result === 'invalid') {
-      return json({ error: 'invalid-token', message: 'This reset link is invalid or has expired.' }, 400);
-    }
-    return signIn(result);
-  }
-
-  if (path === '/api/auth/change-password' && request.method === 'POST') {
-    const account = await identifyAccount(request, env);
-    if (!account) return json({ error: 'unauthorised' }, 401);
-    const body = await readJson<{ currentPassword?: string; newPassword?: string }>(request);
-    if (!body) return json({ error: 'bad-json' }, 400);
-    const ok = await verifyPassword(body.currentPassword || '', account.passwordHash);
-    if (!ok) return json({ error: 'wrong-password', message: 'Your current password is wrong.' }, 400);
-    const problem = passwordProblem(body.newPassword || '');
-    if (problem) return json({ error: 'bad-password', message: problem }, 400);
-    await setPassword(env.BOARD, account, body.newPassword!);
-    return json({ ok: true });
-  }
-
-  return json({ error: 'not-found' }, 404);
-}
-
-/**
- * Admin-only user management: invite, list, promote/demote, enable/disable,
- * and hand out a reset link for someone who can't get email.
- */
-async function handleUsers(request: Request, env: Env, path: string): Promise<Response> {
-  const account = await identifyAccount(request, env);
-  if (!account) return json({ error: 'unauthorised', message: 'Sign in to continue.' }, 401);
-  if (account.role !== 'admin') return json({ error: 'forbidden', message: 'Admins only.' }, 403);
-
-  if (path === '/api/users' && request.method === 'GET') {
-    const [accounts, invites] = await Promise.all([listAccounts(env.BOARD), listInvites(env.BOARD)]);
-    return json({
-      users: accounts.map(publicUser),
-      invites: invites.map(({ token, email, role, invitedBy, createdAt, expiresAt }) => ({
-        email,
-        role,
-        invitedBy,
-        createdAt,
-        expiresAt,
-        link: `${appOrigin(request, env)}/accept-invite?token=${token}`,
-      })),
-      limit: MAX_ACCOUNTS,
-    });
-  }
-
-  if (path === '/api/users/invite' && request.method === 'POST') {
-    const body = await readJson<{ email?: string; role?: string }>(request);
-    if (!body) return json({ error: 'bad-json' }, 400);
-    const email = (body.email || '').trim();
-    if (!isValidEmail(email)) return json({ error: 'bad-email', message: 'Enter a valid email address.' }, 400);
-    const role: Role = body.role === 'admin' ? 'admin' : 'member';
-
-    const result = await createInvite(env.BOARD, account.id, email, role);
-    if (result === 'exists') return json({ error: 'exists', message: 'That person already has an account.' }, 409);
-    if (result === 'pending') {
-      return json({ error: 'pending', message: 'There is already a pending invite for that email.' }, 409);
-    }
-    if (result === 'full') {
-      return json({ error: 'full', message: `This beta is capped at ${MAX_ACCOUNTS} accounts.` }, 409);
-    }
-
-    const link = `${appOrigin(request, env)}/accept-invite?token=${result.token}`;
-    const emailed = await sendInviteEmail(env, result.email, link, account.name || account.email);
-    return json({ invite: { email: result.email, role: result.role, expiresAt: result.expiresAt, link }, emailed }, 201);
-  }
-
-  const inviteMatch = path.match(/^\/api\/users\/invite\/([^/]+)$/);
-  if (inviteMatch && request.method === 'DELETE') {
-    await revokeInvite(env.BOARD, decodeURIComponent(inviteMatch[1]));
-    return json({ ok: true });
-  }
-
-  const userMatch = path.match(/^\/api\/users\/([^/]+)\/(role|status|reset-password)$/);
-  if (userMatch) {
-    const [, rawId, action] = userMatch;
-    const target = await getAccountById(env.BOARD, decodeURIComponent(rawId));
-    if (!target) return json({ error: 'not-found' }, 404);
-
-    if (action === 'role' && request.method === 'POST') {
-      const body = await readJson<{ role?: string }>(request);
-      if (!body) return json({ error: 'bad-json' }, 400);
-      const role: Role = body.role === 'admin' ? 'admin' : 'member';
-      const result = await setRole(env.BOARD, target, role);
-      if (result === 'last-admin') {
-        return json({ error: 'last-admin', message: 'This planner needs at least one admin — promote someone else first.' }, 409);
-      }
-      return json({ user: publicUser(result) });
-    }
-
-    if (action === 'status' && request.method === 'POST') {
-      const body = await readJson<{ status?: string }>(request);
-      if (!body) return json({ error: 'bad-json' }, 400);
-      const status: UserStatus = body.status === 'disabled' ? 'disabled' : 'active';
-      const result = await setStatus(env.BOARD, target, status);
-      if (result === 'last-admin') {
-        return json({ error: 'last-admin', message: 'This planner needs at least one active admin.' }, 409);
-      }
-      return json({ user: publicUser(result) });
-    }
-
-    if (action === 'reset-password' && request.method === 'POST') {
-      const token = await createPasswordReset(env.BOARD, target.id);
-      const link = `${appOrigin(request, env)}/reset-password?token=${token}`;
-      const emailed = await sendResetEmail(env, target.email, link);
-      return json({ link, emailed });
-    }
-  }
-
-  return json({ error: 'not-found' }, 404);
-}
-
 /**
  * The page shown when the app itself is asked for without an Access login.
  *
  * Access normally challenges before the request ever gets here, so reaching
  * this page means the request arrived by a route the Access application does
  * not cover. Sending it to the login would only loop, so it says what is
- * actually wrong instead. Only ever shown on a deployment that has Access
- * configured at all — an accounts-only deployment never reaches this.
+ * actually wrong instead.
  */
 function deniedPage(reason: 'missing' | 'expired' | 'invalid'): Response {
   const heading = reason === 'expired' ? 'Your session has expired' : 'Sign-in required';
@@ -593,20 +278,9 @@ export default {
 
     const access = await checkAccess(request, env);
 
-    if (path.startsWith('/api/auth/')) {
-      const response = await handleAuth(request, env, path);
-      response.headers.append('vary', 'cookie');
-      return response;
-    }
-
-    if (path.startsWith('/api/users')) {
-      const response = await handleUsers(request, env, path);
-      response.headers.append('vary', 'cookie');
-      return response;
-    }
-
     if (path.startsWith('/api/')) {
-      const response = await handleApi(request, env, path, access);
+      const clerk = await checkClerk(request, env);
+      const response = await handleApi(request, env, path, access, clerk);
       // Same-origin only: the app is served by this very Worker, so there is
       // no reason to hand the API to another site. The reply depends on every
       // credential a caller might carry, so none of them may be cached across
@@ -618,8 +292,8 @@ export default {
     // The app itself. With Access configured nothing is served without a valid
     // login — not even the shell — so a Worker reachable on some address the
     // Access application misses is a closed door rather than an open one.
-    // Accounts don't gate the shell the same way: the SPA itself decides what
-    // to show (setup, sign in, or the board) once it asks `/api/session`.
+    // Clerk doesn't gate the shell the same way: the SPA itself shows Clerk's
+    // sign-in UI once it loads, same as it would with no login configured at all.
     if (access && !access.ok) return deniedPage(access.reason);
 
     return env.ASSETS.fetch(request);

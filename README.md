@@ -15,13 +15,13 @@ npm install
 npm run dev          # http://localhost:5173 — board only, no sync
 npm run dev:worker   # http://localhost:8787 — board plus the sync API
 npm run typecheck    # app and Worker
-npm test             # the Access login and accounts checks
+npm test             # the Access login and Clerk session checks
 npm run deploy       # build, then wrangler deploy
 ```
 
 `npm run dev` is enough for working on the board itself. `dev:worker` runs the
-real Worker against a local KV, which is what you want when touching sync or
-accounts; put a token in `.dev.vars` first:
+real Worker against a local KV, which is what you want when touching sync; put
+a token in `.dev.vars` first:
 
 ```
 BOARD_TOKEN=any-string-you-like
@@ -33,10 +33,10 @@ developing. To watch the Worker refuse everything that hasn't logged in, add
 `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` to `.dev.vars` as well: with no real
 Access session to present, every request is turned away, which is the point.
 
-A fresh local KV has no accounts in it either, so the first thing
-`dev:worker` shows you is the **set up your admin account** screen described
-under **Accounts** below — go through it once and the board works as normal
-from then on, that KV being your own local one.
+Neither `npm run dev` nor `dev:worker` needs Clerk at all unless you're
+working on the Accounts feature itself (below) — leave
+`VITE_CLERK_PUBLISHABLE_KEY` unset and the board runs as if accounts didn't
+exist, same as it always did.
 
 ## Views
 
@@ -497,81 +497,69 @@ Nothing has to be closed and reopened, and phones are not a special case.
 ## Accounts
 
 Point more than one person at the same Worker and each of them needs their own
-board, their own login, and a way back in if they forget their password —
-which is what the accounts system below is for: a small, invite-only signup
-capped at **10 accounts** (raise `MAX_ACCOUNTS` in `worker/accounts.ts` if the
-beta grows), needing nothing beyond the KV namespace the board already uses.
+board, their own login, and a way back in if they forget their password.
+[Clerk](https://clerk.com) does all of that — sign-in, invite-only sign-up,
+password reset, the account itself — so this app doesn't have to: the Worker
+only verifies the session token Clerk hands the frontend, using it to give
+each signed-in person their own board.
 
-### Setting up your admin account
+Everything about *running* the beta — inviting people, promoting one to
+admin, disabling an account — happens in Clerk's own dashboard, not this
+app's. There's no in-app admin screen to speak of.
 
-The first time the deployed Worker is opened with no accounts yet, it shows a
-**Set up your admin account** screen instead of the board. Whoever completes
-it becomes the admin — the one role that can invite people, change roles, and
-reset anyone's password.
+### Setting it up
 
-To make sure that's actually you and not whoever happens to visit first, set
-`ADMIN_EMAIL` before the first deploy:
+1. Create a free account at [clerk.com](https://clerk.com) and a new
+   **Application**. Email address + password is enough as a sign-in method;
+   turn off whatever else you don't want (magic links, social login, etc.).
+2. Under **User & authentication → Restrictions**, set sign-up to
+   **Restricted**. Only people you invite from the dashboard will be able to
+   sign up at all — this is what keeps the beta at whatever size you choose.
+3. Invite yourself first: **Users → Invite**, your own email. You'll get an
+   email with a link back to the app to finish setting up your account —
+   the exact same flow every beta user goes through.
+4. From the **API keys** page, copy the **Publishable key** and the
+   **Frontend API URL** (something like `https://your-app.clerk.accounts.dev`,
+   or your own domain if you've set one up).
+
+Then wire them into the app. The publishable key is a build-time setting —
+not a secret, the same reasoning as `VITE_M365_CLIENT_ID` above — so it goes
+in `.env.local`:
+
+```
+VITE_CLERK_PUBLISHABLE_KEY=pk_live_your-key-here
+```
+
+and the Frontend API URL is what the Worker checks session tokens against:
 
 ```bash
-npx wrangler secret put ADMIN_EMAIL     # hello@projectxcreative.com
+npx wrangler secret put CLERK_ISSUER    # https://your-app.clerk.accounts.dev
 npx wrangler deploy
 ```
 
-With it set, setup refuses any other email; without it, whoever gets there
-first becomes admin — fine for a quick local test, not for a real deploy.
+Rebuild (`npm run build`) after adding the publishable key, since Vite bakes
+it into the bundle at build time rather than reading it at runtime.
+
+Leave `VITE_CLERK_PUBLISHABLE_KEY` unset and accounts are off entirely — the
+board runs exactly as it did before Clerk existed, which is what a plain
+`npm run dev` gives you with nothing configured.
 
 ### Inviting the beta
 
-From the account menu (top right, once you're signed in) an admin opens
-**Manage users**: invite by email, pick **Member** or **Admin**, and the
-Worker hands back an invite link straight away, good for 7 days. Copy it and
-send it however you like — email, Slack, a text — unless email sending is
-configured (below), in which case it also goes out on its own.
+**Users → Invite** in Clerk's dashboard, same as inviting yourself. Up to ten
+people is comfortable on Clerk's free tier and is what this app was sized
+for — nothing in the code enforces that number, so it's a plan to stick to
+rather than a wall you'll hit.
 
-An invited person opens the link, sets their name and a password, and lands
-signed in on their own — empty — board. Nobody shares a board by signing in:
-each account gets its own, kept under its own key in the same KV namespace,
-separate from every other account's and from the legacy shared board Access
-and `BOARD_TOKEN` still use.
+Whoever accepts an invitation lands signed in on their own — empty — board.
+Nobody shares a board by signing in: each Clerk account gets its own, kept
+under its own key in the Worker's KV namespace, separate from everyone
+else's and from the legacy shared board Access and `BOARD_TOKEN` still use
+below.
 
-The admin can also, any time, from the same dialog:
-
-- **Promote or demote** — toggle Member/Admin. The last admin can't be
-  demoted or disabled; the beta always needs at least one.
-- **Disable** an account rather than deleting it — signs them out immediately
-  and blocks sign-in, reversibly.
-- **Reset a password on someone's behalf** — hands back a one-time link, the
-  same kind the self-service flow below sends, for when email isn't set up or
-  someone would just rather it were done for them.
-- **Revoke** a pending invite before it's used.
-
-### Password reset
-
-**Forgot your password**, on the sign-in screen, emails a reset link if
-[Resend](https://resend.com) is configured (below); without it, the message
-says to ask your admin, who can generate the same link from **Manage users**.
-Either way the link works once and expires after an hour.
-
-### Sending real email
-
-Invites and resets work by hand-carried link regardless — copy, paste, send.
-Set these two and the Worker sends them itself, via Resend:
-
-```bash
-npx wrangler secret put RESEND_API_KEY
-npx wrangler secret put EMAIL_FROM      # "T-Card Planner <noreply@yourdomain.com>"
-npx wrangler deploy
-```
-
-`EMAIL_FROM` needs a domain Resend has verified for sending. Prefer another
-provider — Postmark, SendGrid, anything with an HTTP API — and `worker/email.ts`
-is one small file: swap the one `fetch` call for your provider's, and nothing
-upstream of it needs to change.
-
-Set `APP_URL` too (`https://plan.yourteam.com`) if the Worker is ever reached
-by more than one address — it's what the links in these emails are built on,
-and otherwise they're guessed from whichever request happened to trigger the
-email.
+Promoting someone, disabling an account, or resending an invite are all
+actions in the same dashboard. **Forgot password**, on the sign-in screen,
+is Clerk's own — nothing to configure.
 
 ### Accounts and Access, together or apart
 
@@ -579,11 +567,11 @@ Accounts don't need Cloudflare Access, and most beta deployments won't have
 it: point people at the Worker's address and they sign in or accept an
 invite. If Access is already protecting a single-owner deployment (below),
 nothing here changes it — an Access-signed-in visitor goes straight to the
-board exactly as before, still on the one legacy board, and never sees a
-login screen of the kind above. The two are additive, not a replacement:
-turning accounts on doesn't touch an existing Access-only setup, and there's
-no need to run both unless you actually want Access's edge login as a second
-layer on top of accounts.
+board exactly as before, still on the one legacy board, and never sees
+Clerk's sign-in screen at all. The two are additive, not a replacement:
+turning Clerk on doesn't touch an existing Access-only setup, and there's no
+need to run both unless you actually want Access's edge login as a second
+layer on top of it.
 
 ### A note on shared computers
 

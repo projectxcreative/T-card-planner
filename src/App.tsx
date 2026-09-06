@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -22,8 +22,6 @@ import Lane from './components/Lane';
 import CardPanel from './components/CardPanel';
 import TopBar from './components/TopBar';
 import SettingsDialog from './components/SettingsDialog';
-import UsersAdminDialog from './components/auth/UsersAdminDialog';
-import { useAccount } from './accountContext';
 import DayView from './components/DayView';
 import MonthView from './components/MonthView';
 import ProjectsView from './components/ProjectsView';
@@ -123,7 +121,14 @@ function loadSettings(): Settings {
   }
 }
 
-export default function App() {
+interface Props {
+  /** Clerk's own account button, when Clerk is signed in — see `main.tsx`. */
+  accountSlot?: ReactNode;
+  /** Clerk's session-token getter, threaded into `useSync` — see `sync.ts`. */
+  getClerkToken?: () => Promise<string | null>;
+}
+
+export default function App({ accountSlot, getClerkToken }: Props = {}) {
   const [board, dispatch] = useReducer(reducer, undefined, load);
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [view, setView] = useState<ViewMode>('week');
@@ -140,8 +145,6 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [showUsers, setShowUsers] = useState(false);
-  const account = useAccount();
   const [past, setPast] = useState<BoardState[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -185,7 +188,7 @@ export default function App() {
   }, []);
 
   const adoptRemote = swapBoard;
-  const sync = useSync(board, adoptRemote);
+  const sync = useSync(board, adoptRemote, getClerkToken);
   const update = useAppUpdate();
 
   useEffect(() => {
@@ -663,7 +666,7 @@ export default function App() {
             onClientFilter={setClientFilter}
             sync={sync}
             update={update}
-            onManageUsers={() => setShowUsers(true)}
+            accountSlot={accountSlot}
           />
 
           <ConflictBar sync={sync} />
@@ -842,10 +845,6 @@ export default function App() {
               onImport={importBoard}
               onClose={() => setShowSettings(false)}
             />
-          )}
-
-          {showUsers && account.user && (
-            <UsersAdminDialog currentUserId={account.user.id} onClose={() => setShowUsers(false)} />
           )}
         </div>
       </LookupsProvider>
