@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import SyncBadge from './SyncBadge';
 import ClientFilter from './ClientFilter';
 import { VIEWS, VIEW_LABELS, type Client, type Settings, type ViewMode } from '../types';
@@ -45,10 +46,12 @@ interface Props {
   onClientFilter: (ids: string[]) => void;
   sync: Sync;
   update: AppUpdate;
+  /** Clerk's own account button, when Clerk is signed in. */
+  accountSlot?: ReactNode;
 }
 
 export default function TopBar(props: Props) {
-  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, canUndo, onUndo, searchRef, clients, clientFilter, onClientFilter, sync, update } = props;
+  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, canUndo, onUndo, searchRef, clients, clientFilter, onClientFilter, sync, update, accountSlot } = props;
 
   // Projects and clients aren't stretches of time, so there is nothing for the
   // arrows to step over while they're on screen.
@@ -190,6 +193,7 @@ export default function TopBar(props: Props) {
         )}
 
         <SyncBadge sync={sync} />
+        {accountSlot}
       </div>
      </div>
     </header>

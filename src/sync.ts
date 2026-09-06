@@ -84,7 +84,10 @@ export interface Sync {
   signedIn: boolean;
   /** Who Access says you are, for the badge to show. */
   email: string | null;
-  /** False when Access is doing the login, so the token box is just noise. */
+  /** True once a Clerk sign-in is driving sync — Clerk owns its own identity
+   *  display and sign-out, so the badge stays out of that business. */
+  clerkActive: boolean;
+  /** False when Access or Clerk is doing the login, so the token box is just noise. */
   needsToken: boolean;
   lastSyncedAt: string | null;
   /** The server's board, held back for you to choose while a conflict stands. */
@@ -111,11 +114,22 @@ export interface Sync {
  * are: behind Cloudflare Access the browser is already logged in and syncing
  * just starts, and only a Worker without Access falls back to asking for a
  * shared token per device.
+ *
+ * A Clerk sign-in is a fourth way in, and doesn't go through `/api/session`
+ * at all — Clerk only renders this component once it has already confirmed
+ * someone is signed in (see `components/auth/AuthGate.tsx`), so `getClerkToken`
+ * being passed at all is itself the proof. Clerk's own token is short-lived
+ * and refetched before each call, so it rides along fresh on every request
+ * rather than being cached the way the legacy token is.
  */
-export function useSync(board: BoardState, adopt: (state: BoardState) => void): Sync {
+export function useSync(
+  board: BoardState,
+  adopt: (state: BoardState) => void,
+  getClerkToken?: () => Promise<string | null>,
+): Sync {
   const [token, setTokenState] = useState(readToken);
   const [session, setSession] = useState<Session | null>(null);
-  const [status, setStatus] = useState<SyncStatus>(() => (readToken() ? 'idle' : 'off'));
+  const [status, setStatus] = useState<SyncStatus>(() => (readToken() || getClerkToken ? 'idle' : 'off'));
   const [conflict, setConflict] = useState<BoardState | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => readMeta().lastSyncedAt);
 
@@ -129,8 +143,8 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
   boardRef.current = board;
 
   const signedIn = Boolean(session?.signedIn);
-  /** Either credential is enough to talk to the server. */
-  const enabled = signedIn || Boolean(token);
+  /** Any credential is enough to talk to the server. */
+  const enabled = signedIn || Boolean(token) || Boolean(getClerkToken);
 
   const writeMeta = useCallback((patch: Partial<Meta>) => {
     meta.current = { ...meta.current, ...patch };
@@ -143,11 +157,15 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
   }, []);
 
   const headers = useCallback(
-    (extra: Record<string, string> = {}) =>
-      // The Access login rides along as a cookie; the token is only sent when
-      // there is one, so a signed-in browser needn't hold a secret at all.
-      (token ? { authorization: `Bearer ${token}`, ...extra } : { ...extra }),
-    [token],
+    async (extra: Record<string, string> = {}) => {
+      // Clerk wins when it's around: it means a real signed-in person with
+      // their own board, not a device-wide secret. The Access login rides
+      // along as a cookie regardless, needing no header of its own.
+      const clerkToken = await getClerkToken?.();
+      if (clerkToken) return { authorization: `Bearer ${clerkToken}`, ...extra };
+      return token ? { authorization: `Bearer ${token}`, ...extra } : { ...extra };
+    },
+    [getClerkToken, token],
   );
 
   /** Maps the Worker's refusals onto a status, or null if the call was fine. */
@@ -178,7 +196,7 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
       try {
         const response = await fetch('/api/board', {
           method: 'PUT',
-          headers: headers({ 'content-type': 'application/json' }),
+          headers: await headers({ 'content-type': 'application/json' }),
           body: JSON.stringify({ rev: force ? undefined : meta.current.rev, board: state, force }),
         });
 
@@ -214,7 +232,7 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
     if (!enabled || inFlight.current) return;
     inFlight.current = true;
     try {
-      const response = await fetch('/api/board', { headers: headers(), cache: 'no-store' });
+      const response = await fetch('/api/board', { headers: await headers(), cache: 'no-store' });
 
       // 204: authorised, but the server has never been written to. Seed it.
       if (response.status === 204) {
@@ -285,16 +303,18 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
 
   // Signing in or out through Access changes what this device can do without
   // the token ever changing, so settle the status once the answer lands —
-  // without treading on a sync that is mid-flight.
+  // without treading on a sync that is mid-flight. A Clerk sign-in is
+  // already settled before this component exists (see `enabled` above), so
+  // it's exempted the same way a legacy token is.
   useEffect(() => {
     if (!session) return;
     setStatus((current) => {
       if (current === 'conflict') return current;
-      if (signedIn) return WAITING_ON_LOGIN.includes(current) ? 'idle' : current;
+      if (signedIn || getClerkToken) return WAITING_ON_LOGIN.includes(current) ? 'idle' : current;
       if (!token) return session.access ? 'signed-out' : 'off';
       return current;
     });
-  }, [session, signedIn, token]);
+  }, [session, signedIn, token, getClerkToken]);
 
   // Local edits: mark dirty and push, once the dust settles.
   useEffect(() => {
@@ -378,9 +398,10 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
     hasToken: Boolean(token),
     signedIn,
     email: session?.email ?? null,
-    // Behind Access the login is the login; a token as well would be one more
-    // secret to keep, guarding a door that is already shut.
-    needsToken: !signedIn && !session?.access,
+    clerkActive: Boolean(getClerkToken),
+    // Behind Access or Clerk the login is the login; a token as well would be
+    // one more secret to keep, guarding a door that is already shut.
+    needsToken: !signedIn && !session?.access && !getClerkToken,
     lastSyncedAt,
     conflict,
     setToken,

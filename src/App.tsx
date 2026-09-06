@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -121,7 +121,14 @@ function loadSettings(): Settings {
   }
 }
 
-export default function App() {
+interface Props {
+  /** Clerk's own account button, when Clerk is signed in — see `main.tsx`. */
+  accountSlot?: ReactNode;
+  /** Clerk's session-token getter, threaded into `useSync` — see `sync.ts`. */
+  getClerkToken?: () => Promise<string | null>;
+}
+
+export default function App({ accountSlot, getClerkToken }: Props = {}) {
   const [board, dispatch] = useReducer(reducer, undefined, load);
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [view, setView] = useState<ViewMode>('week');
@@ -181,7 +188,7 @@ export default function App() {
   }, []);
 
   const adoptRemote = swapBoard;
-  const sync = useSync(board, adoptRemote);
+  const sync = useSync(board, adoptRemote, getClerkToken);
   const update = useAppUpdate();
 
   useEffect(() => {
@@ -659,6 +666,7 @@ export default function App() {
             onClientFilter={setClientFilter}
             sync={sync}
             update={update}
+            accountSlot={accountSlot}
           />
 
           <ConflictBar sync={sync} />

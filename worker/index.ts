@@ -1,25 +1,31 @@
 /**
  * Serves the built board app and a two-call sync API.
  *
- * The whole board is one JSON blob in KV, which is all a single-user planner
- * needs. Writes carry the revision they were based on, so a device that has
- * been offline (or is just a stale tab) is told its base is old rather than
- * silently flattening the newer board.
+ * Each signed-in person gets their own board — a JSON blob in KV, keyed by
+ * whoever is asking. Writes carry the revision they were based on, so a
+ * device that has been offline (or is just a stale tab) is told its base is
+ * old rather than silently flattening the newer board.
  *
- * Who gets in is decided in two places. Cloudflare Access does the login at
- * the edge and this Worker re-checks its signature (see `access.ts`), so the
- * board is only served to someone your Access policy let through. A shared
- * `BOARD_TOKEN` remains for callers that are not a browser — a backup script,
- * or a `wrangler dev` run with no Access in front of it.
+ * Three ways in are recognised, checked in this order: a Clerk session token
+ * (Clerk does the actual sign-in, invite-only sign-up and password reset, in
+ * the browser — this Worker only verifies the token it hands the frontend;
+ * see `clerk.ts`), the JWT Cloudflare Access attaches to a request it let
+ * through at the edge (see `access.ts`), and a shared `BOARD_TOKEN` for
+ * callers that are not a browser — a backup script, or a `wrangler dev` run
+ * with none of the others set up. A Clerk identity gets a board of its own;
+ * Access and the token still share one legacy board between them, exactly as
+ * before Clerk existed, so a single-owner deployment on either of those isn't
+ * changed by Clerk being available.
  */
 
 import { emailAllowed, teamHost, verifyAccess, type AccessIdentity, type AccessResult } from './access';
+import { verifyClerkSession, type ClerkIdentity, type ClerkResult } from './clerk';
 
 export interface Env {
   BOARD: KVNamespace;
-  /** Shared secret for non-browser callers, and the only guard when Access is off. */
+  /** Shared secret for non-browser callers, and the only guard when neither Access nor Clerk is set up. */
   BOARD_TOKEN?: string;
-  /** Lets one namespace hold several boards if you ever want a second. */
+  /** Lets one namespace hold several *legacy* (Access/token) boards if you ever want a second. */
   BOARD_KEY?: string;
   /** Your Zero Trust team, e.g. `myteam` or `myteam.cloudflareaccess.com`. */
   ACCESS_TEAM_DOMAIN?: string;
@@ -27,6 +33,8 @@ export interface Env {
   ACCESS_AUD?: string;
   /** Optional extra gate: only these emails, whatever the Access policy says. */
   ACCESS_EMAILS?: string;
+  /** Clerk's Frontend API URL for this instance, e.g. `https://your-app.clerk.accounts.dev`. */
+  CLERK_ISSUER?: string;
   ASSETS: Fetcher;
 }
 
@@ -80,46 +88,69 @@ async function checkAccess(request: Request, env: Env): Promise<AccessResult | n
   return result;
 }
 
+async function checkClerk(request: Request, env: Env): Promise<ClerkResult | null> {
+  if (!env.CLERK_ISSUER) return null;
+  return verifyClerkSession(request, env.CLERK_ISSUER);
+}
+
+type BoardActor =
+  | { kind: 'clerk'; identity: ClerkIdentity }
+  | { kind: 'access'; identity: AccessIdentity }
+  | { kind: 'token' };
+
+/** Where a Clerk user's own board lives, separate from the legacy shared board. */
+const clerkBoardKey = (sub: string): string => `clerkBoard:${sub}`;
+
+function boardKeyFor(env: Env, actor: BoardActor): string {
+  return actor.kind === 'clerk' ? clerkBoardKey(actor.identity.sub) : env.BOARD_KEY || 'board';
+}
+
 /**
  * Decides whether an API call may proceed, and returns who is asking.
  *
- * Either credential is enough: the Access login a browser arrives with, or the
- * shared token a script carries. 503 when neither is configured, so a
- * half-finished setup reads as "not set up" rather than "wrong password".
+ * Any of three credentials is enough: a Clerk session, the Access login a
+ * browser arrives with, or the shared token a script carries. 503 when none
+ * of the three is configured at all, so a half-finished setup reads as "not
+ * set up" rather than "wrong password".
  */
 function authorise(
   request: Request,
   env: Env,
   access: AccessResult | null,
-): { identity: AccessIdentity | null } | Response {
-  if (access?.ok) return { identity: access.identity };
+  clerk: ClerkResult | null,
+): BoardActor | Response {
+  if (clerk?.ok) return { kind: 'clerk', identity: clerk.identity };
+  if (access?.ok) return { kind: 'access', identity: access.identity };
 
   if (env.BOARD_TOKEN) {
     const supplied = bearer(request);
-    if (supplied && secretsMatch(supplied, env.BOARD_TOKEN)) return { identity: null };
+    if (supplied && secretsMatch(supplied, env.BOARD_TOKEN)) return { kind: 'token' };
   }
 
-  if (!env.BOARD_TOKEN && !accessConfigured(env)) {
+  if (!env.BOARD_TOKEN && !accessConfigured(env) && !env.CLERK_ISSUER) {
     return json(
       {
         error: 'not-configured',
-        message: 'This Worker has no login configured yet: set up Cloudflare Access, or a BOARD_TOKEN secret.',
+        message: 'This Worker has no login configured yet: set up Clerk, Cloudflare Access, or a BOARD_TOKEN secret.',
       },
       503,
     );
   }
 
   // A JWT that merely ran out is a different problem from a wrong one: the
-  // browser only needs to visit Access again, which the app can offer to do.
+  // browser only needs a fresh one, which the app can offer to fetch.
   if (access && !access.ok && access.reason === 'expired') {
     return json({ error: 'signed-out', message: 'Your Cloudflare Access session has expired.' }, 401);
+  }
+  if (clerk && !clerk.ok && clerk.reason === 'expired') {
+    return json({ error: 'signed-out', message: 'Your session has expired. Sign in again.' }, 401);
   }
 
   return json({ error: 'unauthorised', message: 'Wrong or missing credentials.' }, 401);
 }
 
-async function readBoard(env: Env): Promise<StoredBoard | null> {
-  return env.BOARD.get<StoredBoard>(env.BOARD_KEY || 'board', 'json');
+async function readBoard(env: Env, key: string): Promise<StoredBoard | null> {
+  return env.BOARD.get<StoredBoard>(key, 'json');
 }
 
 async function handleApi(
@@ -127,6 +158,7 @@ async function handleApi(
   env: Env,
   path: string,
   access: AccessResult | null,
+  clerk: ClerkResult | null,
 ): Promise<Response> {
   // Deliberately open: it answers whether the Worker is up and what it expects
   // you to log in with, and nothing about the board or about you. It is what
@@ -134,30 +166,34 @@ async function handleApi(
   if (path === '/api/health') {
     return json({
       ok: true,
-      configured: Boolean(env.BOARD_TOKEN) || accessConfigured(env),
+      configured: Boolean(env.BOARD_TOKEN) || accessConfigured(env) || Boolean(env.CLERK_ISSUER),
       access: accessConfigured(env),
+      clerk: Boolean(env.CLERK_ISSUER),
     });
   }
 
   // Who the app is talking to, so it can say so and stop asking for a token
   // it no longer needs. Only ever reports an identity that just verified.
+  // Clerk's own identity (email, name) is known to the frontend directly
+  // from Clerk's SDK, so it isn't repeated here.
   if (path === '/api/session') {
     return json({
       access: accessConfigured(env),
       signedIn: Boolean(access?.ok),
       email: access?.ok ? access.identity.email : null,
-      tokenRequired: !access?.ok && Boolean(env.BOARD_TOKEN),
-      configured: Boolean(env.BOARD_TOKEN) || accessConfigured(env),
+      tokenRequired: !access?.ok && !clerk?.ok && Boolean(env.BOARD_TOKEN),
+      configured: Boolean(env.BOARD_TOKEN) || accessConfigured(env) || Boolean(env.CLERK_ISSUER),
     });
   }
 
   if (path !== '/api/board') return json({ error: 'not-found' }, 404);
 
-  const allowed = authorise(request, env, access);
+  const allowed = authorise(request, env, access, clerk);
   if (allowed instanceof Response) return allowed;
+  const boardKey = boardKeyFor(env, allowed);
 
   if (request.method === 'GET') {
-    const stored = await readBoard(env);
+    const stored = await readBoard(env, boardKey);
     // 204 means "authorised, but nothing saved yet" — the client then pushes
     // whatever it has locally instead of wiping itself.
     return stored ? json(stored) : new Response(null, { status: 204 });
@@ -174,7 +210,7 @@ async function handleApi(
       return json({ error: 'bad-board' }, 400);
     }
 
-    const stored = await readBoard(env);
+    const stored = await readBoard(env, boardKey);
     const currentRev = stored?.rev ?? 0;
     const baseRev = Number.isFinite(payload.rev) ? Number(payload.rev) : 0;
 
@@ -187,7 +223,7 @@ async function handleApi(
       updatedAt: new Date().toISOString(),
       board: payload.board,
     };
-    await env.BOARD.put(env.BOARD_KEY || 'board', JSON.stringify(next));
+    await env.BOARD.put(boardKey, JSON.stringify(next));
     return json({ rev: next.rev, updatedAt: next.updatedAt });
   }
 
@@ -243,10 +279,12 @@ export default {
     const access = await checkAccess(request, env);
 
     if (path.startsWith('/api/')) {
-      const response = await handleApi(request, env, path, access);
+      const clerk = await checkClerk(request, env);
+      const response = await handleApi(request, env, path, access, clerk);
       // Same-origin only: the app is served by this very Worker, so there is
-      // no reason to hand the API to another site. The reply depends on both
-      // credentials, so neither may be cached across callers.
+      // no reason to hand the API to another site. The reply depends on every
+      // credential a caller might carry, so none of them may be cached across
+      // callers.
       response.headers.set('vary', 'authorization, cookie');
       return response;
     }
@@ -254,6 +292,8 @@ export default {
     // The app itself. With Access configured nothing is served without a valid
     // login — not even the shell — so a Worker reachable on some address the
     // Access application misses is a closed door rather than an open one.
+    // Clerk doesn't gate the shell the same way: the SPA itself shows Clerk's
+    // sign-in UI once it loads, same as it would with no login configured at all.
     if (access && !access.ok) return deniedPage(access.reason);
 
     return env.ASSETS.fetch(request);

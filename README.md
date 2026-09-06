@@ -15,7 +15,7 @@ npm install
 npm run dev          # http://localhost:5173 — board only, no sync
 npm run dev:worker   # http://localhost:8787 — board plus the sync API
 npm run typecheck    # app and Worker
-npm test             # the Access login checks
+npm test             # the Access login and Clerk session checks
 npm run deploy       # build, then wrangler deploy
 ```
 
@@ -32,6 +32,11 @@ edge, and `wrangler dev` isn't behind it — so the token is how you get in whil
 developing. To watch the Worker refuse everything that hasn't logged in, add
 `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` to `.dev.vars` as well: with no real
 Access session to present, every request is turned away, which is the point.
+
+Neither `npm run dev` nor `dev:worker` needs Clerk at all unless you're
+working on the Accounts feature itself (below) — leave
+`VITE_CLERK_PUBLISHABLE_KEY` unset and the board runs as if accounts didn't
+exist, same as it always did.
 
 ## Views
 
@@ -434,10 +439,12 @@ meanwhile, for when you'd rather have it immediately.
 Cards live in `localStorage` and the app works with no server at all — that is
 the **Sync off** state in the toolbar, and it's a perfectly good way to run.
 
-Point it at the Worker and the same board follows you between machines. Behind
-Cloudflare Access there is nothing to set up per device: you log in, the badge
-reads **Synced** and says which address you logged in as. Each device holds the
-whole board and the revision it last agreed with the server:
+Point it at the Worker and the same board follows you between machines. Once
+you're signed in — with an account (below) or behind Cloudflare Access — there
+is nothing to set up per device: you log in, the badge reads **Synced** and
+says which address you logged in as. Each account's board is its own; nothing
+here is shared between people, only between one person's own devices. Each
+device holds the whole board and the revision it last agreed with the server:
 
 - Edits are pushed about a second after you stop making them.
 - Other devices pick them up when you next look at the tab, and every 45
@@ -487,14 +494,104 @@ A deploy reaches a device the next time the app is open and looks — within hal
 an hour, or straight away if it has just been brought back to the foreground.
 Nothing has to be closed and reopened, and phones are not a special case.
 
+## Accounts
+
+Point more than one person at the same Worker and each of them needs their own
+board, their own login, and a way back in if they forget their password.
+[Clerk](https://clerk.com) does all of that — sign-in, invite-only sign-up,
+password reset, the account itself — so this app doesn't have to: the Worker
+only verifies the session token Clerk hands the frontend, using it to give
+each signed-in person their own board.
+
+Everything about *running* the beta — inviting people, promoting one to
+admin, disabling an account — happens in Clerk's own dashboard, not this
+app's. There's no in-app admin screen to speak of.
+
+### Setting it up
+
+1. Create a free account at [clerk.com](https://clerk.com) and a new
+   **Application**. Email address + password is enough as a sign-in method;
+   turn off whatever else you don't want (magic links, social login, etc.).
+2. Under **User & authentication → Restrictions**, set sign-up to
+   **Restricted**. Only people you invite from the dashboard will be able to
+   sign up at all — this is what keeps the beta at whatever size you choose.
+3. Invite yourself first: **Users → Invite**, your own email. You'll get an
+   email with a link back to the app to finish setting up your account —
+   the exact same flow every beta user goes through.
+4. From the **API keys** page, copy the **Publishable key** and the
+   **Frontend API URL** (something like `https://your-app.clerk.accounts.dev`,
+   or your own domain if you've set one up).
+
+Then wire them into the app. The publishable key is a build-time setting —
+not a secret, the same reasoning as `VITE_M365_CLIENT_ID` above — so it goes
+in `.env.local`:
+
+```
+VITE_CLERK_PUBLISHABLE_KEY=pk_live_your-key-here
+```
+
+and the Frontend API URL is what the Worker checks session tokens against:
+
+```bash
+npx wrangler secret put CLERK_ISSUER    # https://your-app.clerk.accounts.dev
+npx wrangler deploy
+```
+
+Rebuild (`npm run build`) after adding the publishable key, since Vite bakes
+it into the bundle at build time rather than reading it at runtime.
+
+Leave `VITE_CLERK_PUBLISHABLE_KEY` unset and accounts are off entirely — the
+board runs exactly as it did before Clerk existed, which is what a plain
+`npm run dev` gives you with nothing configured.
+
+### Inviting the beta
+
+**Users → Invite** in Clerk's dashboard, same as inviting yourself. Up to ten
+people is comfortable on Clerk's free tier and is what this app was sized
+for — nothing in the code enforces that number, so it's a plan to stick to
+rather than a wall you'll hit.
+
+Whoever accepts an invitation lands signed in on their own — empty — board.
+Nobody shares a board by signing in: each Clerk account gets its own, kept
+under its own key in the Worker's KV namespace, separate from everyone
+else's and from the legacy shared board Access and `BOARD_TOKEN` still use
+below.
+
+Promoting someone, disabling an account, or resending an invite are all
+actions in the same dashboard. **Forgot password**, on the sign-in screen,
+is Clerk's own — nothing to configure.
+
+### Accounts and Access, together or apart
+
+Accounts don't need Cloudflare Access, and most beta deployments won't have
+it: point people at the Worker's address and they sign in or accept an
+invite. If Access is already protecting a single-owner deployment (below),
+nothing here changes it — an Access-signed-in visitor goes straight to the
+board exactly as before, still on the one legacy board, and never sees
+Clerk's sign-in screen at all. The two are additive, not a replacement:
+turning Clerk on doesn't touch an existing Access-only setup, and there's no
+need to run both unless you actually want Access's edge login as a second
+layer on top of it.
+
+### A note on shared computers
+
+The board is cached in the browser's own storage for instant loads and
+offline editing, independent of whichever account is signed in. On a device
+only one person ever uses that's invisible. On a shared or kiosk-style
+device, signing in as someone else can briefly show a **conflict** prompt the
+first time — harmless, and resolving it either way lands on that account's
+real board — but a beta user is better off on their own device or browser
+profile where that's easy to arrange.
+
 ## The login
 
 A shared token is fine as far as it goes, but it is one secret pasted into
 every browser you own, it never expires, and it guards the API while leaving
-the app itself open to anyone who finds the address. **Cloudflare Access** puts
-a real login in front of the whole thing: you sign in with a code emailed to
-you, or with Google or GitHub, and everyone else gets a locked door instead of
-a board.
+the app itself open to anyone who finds the address. **Cloudflare Access** is
+an optional edge login on top of everything above — useful if you'd rather
+gate a single-owner deployment with your identity provider than with an
+account of its own: you sign in with a code emailed to you, or with Google or
+GitHub, and everyone else gets a locked door instead of a board.
 
 Access does the challenge at the edge, before a request reaches the Worker. The
 Worker then verifies the signed token Access attaches (`worker/access.ts`), so

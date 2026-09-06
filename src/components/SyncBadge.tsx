@@ -14,9 +14,9 @@ const LABELS: Record<SyncStatus, string> = {
 
 const DETAIL: Record<SyncStatus, string> = {
   off: 'This device keeps the board in its own browser storage. Add your sync token to share it with your other devices.',
-  unconfigured: 'The Worker is running but has no login set up yet — neither Cloudflare Access nor a BOARD_TOKEN secret.',
+  unconfigured: 'The Worker is running but has no login set up yet — no Clerk, Cloudflare Access, or BOARD_TOKEN secret.',
   unauthorised: "The server didn't accept this token. Check it against the BOARD_TOKEN secret on the Worker.",
-  'signed-out': 'Your Cloudflare Access session has ended. Sign in again and the board picks up where it left off — nothing on this device is lost meanwhile.',
+  'signed-out': 'Your session has ended. Sign in again and the board picks up where it left off — nothing on this device is lost meanwhile.',
   idle: 'Up to date with the server.',
   saving: 'Sending your latest changes.',
   offline: "Can't reach the server. Your changes are saved on this device and will go up when it's back.",
@@ -128,6 +128,15 @@ export default function SyncBadge({ sync }: { sync: Sync }) {
                 Connect
               </button>
             </form>
+          ) : sync.clerkActive ? (
+            // Clerk owns identity and sign-out — its own account button is
+            // elsewhere in the bar — so there's nothing to offer here beyond
+            // a manual nudge to sync.
+            <div className="sync-actions">
+              <button type="button" className="ghost" onClick={() => { sync.syncNow(); setOpen(false); }}>
+                Sync now
+              </button>
+            </div>
           ) : null}
         </div>
       )}
