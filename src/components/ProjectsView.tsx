@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { Card, CategoryId, Expense, LaneId, Project, ProjectStage, StageGroup } from '../types';
 import {
   BACKLOG,
-  CATEGORY_IDS,
   EXPENSE_LABEL_MAX,
   PROJECT_STAGES,
   STAGE_GROUP,
@@ -517,7 +516,7 @@ function AttachCard({
 export default function ProjectsView(props: Props) {
   const { projects, cardsOf, selected, onSelect, onCreate, onPatch, onDelete, onOpenCard, onAddCard, onMoveCard, attachable, onAttachCard, locked } = props;
   const categories = useCategories();
-  const { clients, clientOrder } = useLookups();
+  const { clients, clientOrder, categoryOrder } = useLookups();
   const [newTitle, setNewTitle] = useState('');
   const [cardTitle, setCardTitle] = useState('');
   const [cardDay, setCardDay] = useState(todayKey());
@@ -764,7 +763,7 @@ export default function ProjectsView(props: Props) {
                       value={active.colour}
                       onChange={(event) => onPatch(active.id, { colour: event.target.value as CategoryId })}
                     >
-                      {CATEGORY_IDS.map((id) => (
+                      {categoryOrder.map((id) => (
                         <option key={id} value={id}>
                           {categoryLabel(categories, id)}
                         </option>

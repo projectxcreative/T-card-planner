@@ -34,3 +34,13 @@ export function formatEstimate(hours: number): string {
   if (hours < 1) return `${Math.round(hours * 60)}m`;
   return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
 }
+
+/** Minutes logged on an update, or the total across a card's updates. */
+export function formatMinutes(minutes: number): string {
+  if (!minutes) return '0m';
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+  if (hours && mins) return `${hours}h ${mins}m`;
+  if (hours) return `${hours}h`;
+  return `${mins}m`;
+}

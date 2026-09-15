@@ -6,7 +6,7 @@ const LABELS: Record<SyncStatus, string> = {
   unconfigured: 'Set up',
   unauthorised: 'Bad token',
   'signed-out': 'Signed out',
-  idle: 'Synced',
+  idle: 'Logged in',
   saving: 'Saving…',
   offline: 'Offline',
   conflict: 'Conflict',

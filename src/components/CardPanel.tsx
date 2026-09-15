@@ -1,8 +1,18 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Card, CardSurface, CategoryId, LaneId, Status } from '../types';
-import { BACKLOG, CATEGORY_IDS, STATUSES, STATUS_LABELS, categoryLabel, isClosedStage } from '../types';
+import type { Card, CardSurface, CardUpdate, CategoryId, LaneId, Status } from '../types';
+import {
+  BACKLOG,
+  STATUSES,
+  STATUS_LABELS,
+  UPDATE_NOTE_MAX,
+  categoryLabel,
+  isClosedStage,
+  totalUpdateMinutes,
+  updateCategoryLabel,
+} from '../types';
 import { useCategories } from '../categories';
 import { useLookups } from '../lookups';
+import { formatMinutes } from '../cardText';
 import { addDays, formatFullDay, formatTime, todayKey } from '../dates';
 
 // The editor pulls in ProseMirror; keep it out of the first paint.
@@ -50,6 +60,9 @@ export interface CardPanelProps {
   onMove: (id: string, lane: LaneId) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  onAddUpdate: (cardId: string, categoryId: string, minutes: number, note: string) => void;
+  onPatchUpdate: (cardId: string, updateId: string, patch: Partial<CardUpdate>) => void;
+  onDeleteUpdate: (cardId: string, updateId: string) => void;
   onClose: () => void;
 }
 
@@ -97,10 +110,166 @@ function useGrowToFit(ref: React.RefObject<HTMLTextAreaElement | null>, value: s
   }, [ref, value]);
 }
 
+/**
+ * Discrete logged work: what kind it was, and how long it took, kept apart
+ * from the card's own rough `estimate` — a shoot's capture, its edit and its
+ * export can each get their own line rather than one blurred number.
+ */
+function UpdatesSection({
+  card,
+  locked,
+  onAddUpdate,
+  onPatchUpdate,
+  onDeleteUpdate,
+}: {
+  card: Card;
+  locked?: boolean;
+  onAddUpdate: (cardId: string, categoryId: string, minutes: number, note: string) => void;
+  onPatchUpdate: (cardId: string, updateId: string, patch: Partial<CardUpdate>) => void;
+  onDeleteUpdate: (cardId: string, updateId: string) => void;
+}) {
+  const { updateCategories, updateCategoryOrder } = useLookups();
+  const [categoryId, setCategoryId] = useState(updateCategoryOrder[0] ?? '');
+  const [minutes, setMinutes] = useState(30);
+  const [note, setNote] = useState('');
+
+  // The list can change out from under an open card — a category deleted in
+  // Settings on another device — so the draft is never left pointing at one
+  // that no longer exists.
+  useEffect(() => {
+    if (categoryId && !updateCategories[categoryId]) setCategoryId(updateCategoryOrder[0] ?? '');
+  }, [categoryId, updateCategories, updateCategoryOrder]);
+
+  const total = totalUpdateMinutes(card.updates);
+  const sorted = [...card.updates].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+
+  const add = () => {
+    if (!categoryId || minutes <= 0) return;
+    onAddUpdate(card.id, categoryId, minutes, note.trim());
+    setNote('');
+  };
+
+  return (
+    <div className="field">
+      <span className="field-label">
+        Updates
+        {total > 0 && <span className="field-total">{formatMinutes(total)} logged</span>}
+      </span>
+
+      {sorted.length > 0 && (
+        <ul className="upd-list">
+          {sorted.map((update) => (
+            <li key={update.id} className="upd-row">
+              <span
+                className="upd-dot"
+                style={{ '--chip': updateCategories[update.categoryId]?.colour ?? '#8b98a9' } as React.CSSProperties}
+                aria-hidden="true"
+              />
+              <select
+                className="upd-category"
+                aria-label="Update category"
+                value={update.categoryId}
+                disabled={locked}
+                onChange={(event) => onPatchUpdate(card.id, update.id, { categoryId: event.target.value })}
+              >
+                {updateCategoryOrder.map((id) => (
+                  <option key={id} value={id}>
+                    {updateCategoryLabel(updateCategories, id)}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                className="upd-minutes"
+                aria-label="Minutes"
+                min={0}
+                step={5}
+                value={update.minutes}
+                disabled={locked}
+                onChange={(event) =>
+                  onPatchUpdate(card.id, update.id, { minutes: Math.max(0, Math.round(Number(event.target.value) || 0)) })
+                }
+              />
+              <input
+                type="text"
+                className="upd-note"
+                aria-label="What was done"
+                value={update.note}
+                placeholder="What did you do?"
+                maxLength={UPDATE_NOTE_MAX}
+                disabled={locked}
+                onChange={(event) => onPatchUpdate(card.id, update.id, { note: event.target.value })}
+              />
+              <button
+                type="button"
+                className="ghost danger upd-remove"
+                disabled={locked}
+                title="Remove update"
+                aria-label="Remove update"
+                onClick={() => onDeleteUpdate(card.id, update.id)}
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {updateCategoryOrder.length === 0 ? (
+        <p className="field-note">No update categories yet — add them under Settings › Cards &amp; updates.</p>
+      ) : (
+        <div className="upd-add">
+          <select
+            aria-label="New update's category"
+            value={categoryId}
+            disabled={locked}
+            onChange={(event) => setCategoryId(event.target.value)}
+          >
+            {updateCategoryOrder.map((id) => (
+              <option key={id} value={id}>
+                {updateCategoryLabel(updateCategories, id)}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            className="upd-minutes"
+            aria-label="New update's minutes"
+            min={0}
+            step={5}
+            value={minutes}
+            disabled={locked}
+            onChange={(event) => setMinutes(Math.max(0, Math.round(Number(event.target.value) || 0)))}
+          />
+          <input
+            type="text"
+            className="upd-note"
+            aria-label="What did you do"
+            placeholder="What did you do? (optional)"
+            maxLength={UPDATE_NOTE_MAX}
+            value={note}
+            disabled={locked}
+            onChange={(event) => setNote(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                add();
+              }
+            }}
+          />
+          <button type="button" className="ghost" disabled={locked || minutes <= 0} onClick={add}>
+            Log
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CardBody(props: CardPanelProps) {
-  const { card, lane, calendarReady, locked, onPatch, onMove } = props;
+  const { card, lane, calendarReady, locked, onPatch, onMove, onAddUpdate, onPatchUpdate, onDeleteUpdate } = props;
   const categories = useCategories();
-  const { projects, clients, clientOrder } = useLookups();
+  const { projects, clients, clientOrder, categoryOrder } = useLookups();
   const [html, setHtml] = useState(card.description);
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
@@ -195,7 +364,7 @@ function CardBody(props: CardPanelProps) {
             value={card.colour}
             onChange={(event) => onPatch(card.id, { colour: event.target.value as CategoryId })}
           >
-            {CATEGORY_IDS.map((id) => (
+            {categoryOrder.map((id) => (
               <option key={id} value={id}>
                 {categoryLabel(categories, id)}
               </option>
@@ -293,6 +462,14 @@ function CardBody(props: CardPanelProps) {
           Backlog
         </button>
       </div>
+
+      <UpdatesSection
+        card={card}
+        locked={locked}
+        onAddUpdate={onAddUpdate}
+        onPatchUpdate={onPatchUpdate}
+        onDeleteUpdate={onDeleteUpdate}
+      />
 
       {/* Publishing needs a day to publish to, so the box stays out of reach
           until the card has one — and says why rather than just greying out. */}
