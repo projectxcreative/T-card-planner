@@ -551,16 +551,23 @@ function oneClient(value: Partial<Project> & { clients?: unknown }, clients: Rec
 }
 
 /** Boards written before expenses existed simply arrive without them; a
- *  hand-edited or malformed entry is dropped rather than sinking the project. */
+ *  hand-edited or malformed entry is dropped rather than sinking the project.
+ *  An empty label is kept rather than dropped — same as a project or card
+ *  title — so an expense mid-edit can't be sunk by a sync landing between
+ *  keystrokes. */
 function normaliseExpenses(input: unknown): Expense[] {
   if (!Array.isArray(input)) return [];
   const expenses: Expense[] = [];
   for (const value of input as Partial<Expense>[]) {
     if (!value || typeof value !== 'object') continue;
-    const label = typeof value.label === 'string' ? value.label.trim().slice(0, EXPENSE_LABEL_MAX) : '';
-    if (!label) continue;
+    const label = typeof value.label === 'string' ? value.label.slice(0, EXPENSE_LABEL_MAX) : '';
     const amount = Number.isFinite(value.amount) ? Math.max(0, Number(value.amount)) : 0;
-    expenses.push({ id: typeof value.id === 'string' && value.id ? value.id : uid(), label, amount });
+    expenses.push({
+      id: typeof value.id === 'string' && value.id ? value.id : uid(),
+      label,
+      amount,
+      chargeable: value.chargeable === true,
+    });
   }
   return expenses;
 }

@@ -1482,7 +1482,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .money-sign { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-faint); pointer-events: none; }
 .money-input { width: 100%; padding: 6px 8px 6px 22px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); }
 
-.split-addcard { display: flex; gap: 8px; }
+.split-addcard { display: flex; flex-wrap: wrap; gap: 8px; }
 .split-addcard .lane-add-input { flex: 1; min-width: 0; }
 .split-addcard input[type='date'] { padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); }
 
@@ -1702,16 +1702,42 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .expense-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
   padding: 6px 9px;
   background: var(--surface-2);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
 }
 
-.expense-label { flex: 1; min-width: 0; font-size: var(--t-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.expense-amount { flex: none; font-size: var(--t-body); font-variant-numeric: tabular-nums; color: var(--text-dim); }
-.expense-money { flex: none; width: 110px; }
+/* Borderless until touched, so a row of figures doesn't read as a row of
+   input boxes — the same idea as the project title above it. */
+.expense-label-input {
+  flex: 1 1 140px;
+  min-width: 0;
+  padding: 3px 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font-size: var(--t-body);
+}
+.expense-label-input:hover { border-color: var(--line-soft); }
+.expense-label-input:focus { border-color: var(--line); background: var(--surface); outline: none; }
+
+.expense-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--t-meta);
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.expense-toggle input { margin: 0; }
+
+.expense-money { flex: none; width: 100px; }
 
 @media (max-width: 700px) {
   .proj-row-figures { align-items: flex-start; }
