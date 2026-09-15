@@ -1,0 +1,680 @@
+{
+  "version": 2,
+  "cards": {
+    "demo-card-b1": {
+      "id": "demo-card-b1",
+      "title": "Draft Q4 proposal for Bright Path",
+      "description": "",
+      "colour": "green",
+      "status": "todo",
+      "estimate": 2,
+      "start": null,
+      "projectId": "demo-project-brightpath-onboarding",
+      "clients": [
+        "demo-client-brightpath"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.696Z",
+      "updatedAt": "2026-09-14T16:46:41.696Z"
+    },
+    "demo-card-b2": {
+      "id": "demo-card-b2",
+      "title": "Research competitor pricing",
+      "description": "",
+      "colour": "slate",
+      "status": "todo",
+      "estimate": 1,
+      "start": null,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.696Z",
+      "updatedAt": "2026-09-14T16:46:41.696Z"
+    },
+    "demo-card-b3": {
+      "id": "demo-card-b3",
+      "title": "Renew domain registrations",
+      "description": "",
+      "colour": "slate",
+      "status": "todo",
+      "estimate": 0.5,
+      "start": null,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.696Z",
+      "updatedAt": "2026-09-14T16:46:41.696Z"
+    },
+    "demo-card-b4": {
+      "id": "demo-card-b4",
+      "title": "Sketch new logo concepts",
+      "description": "",
+      "colour": "purple",
+      "status": "todo",
+      "estimate": 3,
+      "start": null,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.696Z",
+      "updatedAt": "2026-09-14T16:46:41.696Z"
+    },
+    "demo-card-b5": {
+      "id": "demo-card-b5",
+      "title": "Follow up with Solstice on ad creative",
+      "description": "",
+      "colour": "amber",
+      "status": "todo",
+      "estimate": 1,
+      "start": null,
+      "projectId": "demo-project-solstice-campaign",
+      "clients": [
+        "demo-client-solstice"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.696Z",
+      "updatedAt": "2026-09-14T16:46:41.696Z"
+    },
+    "demo-card-p1": {
+      "id": "demo-card-p1",
+      "title": "Client call — Acme kickoff",
+      "description": "",
+      "colour": "teal",
+      "status": "done",
+      "estimate": 1,
+      "start": 570,
+      "projectId": "demo-project-acme-website",
+      "clients": [
+        "demo-client-acme"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": "2026-09-10T16:46:41.696Z",
+      "createdAt": "2026-09-01T16:46:41.696Z",
+      "updatedAt": "2026-09-14T16:46:41.696Z"
+    },
+    "demo-card-p2": {
+      "id": "demo-card-p2",
+      "title": "Invoice chasing — Harbor",
+      "description": "",
+      "colour": "green",
+      "status": "done",
+      "estimate": 0.5,
+      "start": 840,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": "2026-09-10T16:46:41.696Z",
+      "createdAt": "2026-09-01T16:46:41.696Z",
+      "updatedAt": "2026-09-14T16:46:41.696Z"
+    },
+    "demo-card-p3": {
+      "id": "demo-card-p3",
+      "title": "Wireframe onboarding screens",
+      "description": "",
+      "colour": "blue",
+      "status": "done",
+      "estimate": 3,
+      "start": 600,
+      "projectId": "demo-project-brightpath-onboarding",
+      "clients": [
+        "demo-client-brightpath"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": "2026-09-10T16:46:41.696Z",
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-p4": {
+      "id": "demo-card-p4",
+      "title": "Team standup",
+      "description": "",
+      "colour": "teal",
+      "status": "done",
+      "estimate": 0.25,
+      "start": 540,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": "2026-09-10T16:46:41.697Z",
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-p5": {
+      "id": "demo-card-p5",
+      "title": "Northwind brand review meeting",
+      "description": "",
+      "colour": "teal",
+      "status": "done",
+      "estimate": 1.5,
+      "start": 660,
+      "projectId": "demo-project-northwind-rebrand",
+      "clients": [
+        "demo-client-northwind"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": "2026-09-10T16:46:41.697Z",
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-p6": {
+      "id": "demo-card-p6",
+      "title": "Fix billing view bug",
+      "description": "",
+      "colour": "red",
+      "status": "done",
+      "estimate": 2,
+      "start": 780,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": "2026-09-10T16:46:41.697Z",
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-p7": {
+      "id": "demo-card-p7",
+      "title": "Weekly wrap-up notes",
+      "description": "",
+      "colour": "slate",
+      "status": "done",
+      "estimate": 0.5,
+      "start": 960,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": "2026-09-10T16:46:41.697Z",
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-t1": {
+      "id": "demo-card-t1",
+      "title": "Prep Acme website copy",
+      "description": "",
+      "colour": "blue",
+      "status": "done",
+      "estimate": 2,
+      "start": 540,
+      "projectId": "demo-project-acme-website",
+      "clients": [
+        "demo-client-acme"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": "2026-09-10T16:46:41.697Z",
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-t2": {
+      "id": "demo-card-t2",
+      "title": "Review Bright Path wireframes with client",
+      "description": "",
+      "colour": "green",
+      "status": "doing",
+      "estimate": 1.5,
+      "start": 600,
+      "projectId": "demo-project-brightpath-onboarding",
+      "clients": [
+        "demo-client-brightpath"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-t3": {
+      "id": "demo-card-t3",
+      "title": "Update project tracker",
+      "description": "",
+      "colour": "slate",
+      "status": "todo",
+      "estimate": 0.5,
+      "start": 840,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-t4": {
+      "id": "demo-card-t4",
+      "title": "Design social assets — Solstice",
+      "description": "",
+      "colour": "amber",
+      "status": "doing",
+      "estimate": 2,
+      "start": 930,
+      "projectId": "demo-project-solstice-campaign",
+      "clients": [
+        "demo-client-solstice"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-t5": {
+      "id": "demo-card-t5",
+      "title": "Acme website — dev handoff",
+      "description": "",
+      "colour": "blue",
+      "status": "todo",
+      "estimate": 3,
+      "start": 540,
+      "projectId": "demo-project-acme-website",
+      "clients": [
+        "demo-client-acme"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-t6": {
+      "id": "demo-card-t6",
+      "title": "Blocked: waiting on Harbor sign-off",
+      "description": "",
+      "colour": "purple",
+      "status": "blocked",
+      "estimate": 1,
+      "start": null,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-t7": {
+      "id": "demo-card-t7",
+      "title": "Northwind rebrand — final assets",
+      "description": "",
+      "colour": "teal",
+      "status": "todo",
+      "estimate": 2,
+      "start": 570,
+      "projectId": "demo-project-northwind-rebrand",
+      "clients": [
+        "demo-client-northwind"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-t8": {
+      "id": "demo-card-t8",
+      "title": "Monthly accounts",
+      "description": "",
+      "colour": "slate",
+      "status": "todo",
+      "estimate": 1,
+      "start": 780,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-t9": {
+      "id": "demo-card-t9",
+      "title": "Client call — Solstice campaign review",
+      "description": "",
+      "colour": "amber",
+      "status": "todo",
+      "estimate": 1,
+      "start": 660,
+      "projectId": "demo-project-solstice-campaign",
+      "clients": [
+        "demo-client-solstice"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-n1": {
+      "id": "demo-card-n1",
+      "title": "Kickoff — Acme mobile app retro",
+      "description": "",
+      "colour": "blue",
+      "status": "todo",
+      "estimate": 1,
+      "start": 600,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-n2": {
+      "id": "demo-card-n2",
+      "title": "Bright Path onboarding build",
+      "description": "",
+      "colour": "green",
+      "status": "todo",
+      "estimate": 4,
+      "start": null,
+      "projectId": "demo-project-brightpath-onboarding",
+      "clients": [
+        "demo-client-brightpath"
+      ],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-n3": {
+      "id": "demo-card-n3",
+      "title": "Personal — dentist appointment",
+      "description": "",
+      "colour": "pink",
+      "status": "todo",
+      "estimate": 1,
+      "start": 540,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-n4": {
+      "id": "demo-card-n4",
+      "title": "Prepare Harbor case study",
+      "description": "",
+      "colour": "purple",
+      "status": "todo",
+      "estimate": 2,
+      "start": null,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    },
+    "demo-card-n5": {
+      "id": "demo-card-n5",
+      "title": "Plan next sprint",
+      "description": "",
+      "colour": "slate",
+      "status": "todo",
+      "estimate": 1,
+      "start": null,
+      "projectId": null,
+      "clients": [],
+      "publish": false,
+      "eventId": null,
+      "completedAt": null,
+      "createdAt": "2026-09-01T16:46:41.697Z",
+      "updatedAt": "2026-09-14T16:46:41.697Z"
+    }
+  },
+  "lanes": {
+    "backlog": [
+      "demo-card-b1",
+      "demo-card-b2",
+      "demo-card-b3",
+      "demo-card-b4",
+      "demo-card-b5"
+    ],
+    "2026-09-07": [
+      "demo-card-p1",
+      "demo-card-p2"
+    ],
+    "2026-09-08": [
+      "demo-card-p3"
+    ],
+    "2026-09-09": [
+      "demo-card-p4",
+      "demo-card-p5"
+    ],
+    "2026-09-10": [
+      "demo-card-p6"
+    ],
+    "2026-09-11": [
+      "demo-card-p7"
+    ],
+    "2026-09-14": [
+      "demo-card-t1"
+    ],
+    "2026-09-15": [
+      "demo-card-t2",
+      "demo-card-t3",
+      "demo-card-t4"
+    ],
+    "2026-09-16": [
+      "demo-card-t5",
+      "demo-card-t6"
+    ],
+    "2026-09-17": [
+      "demo-card-t7",
+      "demo-card-t8"
+    ],
+    "2026-09-18": [
+      "demo-card-t9"
+    ],
+    "2026-09-21": [
+      "demo-card-n1"
+    ],
+    "2026-09-22": [
+      "demo-card-n2"
+    ],
+    "2026-09-23": [
+      "demo-card-n3"
+    ],
+    "2026-09-24": [
+      "demo-card-n4"
+    ],
+    "2026-09-25": [
+      "demo-card-n5"
+    ]
+  },
+  "categories": {
+    "slate": {
+      "label": "General",
+      "colour": "#64748b"
+    },
+    "blue": {
+      "label": "Client work",
+      "colour": "#2179c8"
+    },
+    "teal": {
+      "label": "Meetings",
+      "colour": "#0f8f8a"
+    },
+    "green": {
+      "label": "Admin",
+      "colour": "#6f9c22"
+    },
+    "amber": {
+      "label": "Waiting on",
+      "colour": "#c68512"
+    },
+    "red": {
+      "label": "Urgent",
+      "colour": "#d84630"
+    },
+    "purple": {
+      "label": "Deep work",
+      "colour": "#7b4a9e"
+    },
+    "pink": {
+      "label": "Personal",
+      "colour": "#b81f6a"
+    }
+  },
+  "projects": {
+    "demo-project-acme-website": {
+      "id": "demo-project-acme-website",
+      "title": "Acme website refresh",
+      "description": "<p>Full redesign of the marketing site, three templates plus a CMS handover.</p>",
+      "value": 4500,
+      "stage": "active",
+      "clientId": "demo-client-acme",
+      "invoiceMonth": null,
+      "colour": "blue",
+      "expenses": [],
+      "archived": false,
+      "createdAt": "2026-08-16T16:46:41.696Z",
+      "updatedAt": "2026-09-13T16:46:41.696Z"
+    },
+    "demo-project-northwind-rebrand": {
+      "id": "demo-project-northwind-rebrand",
+      "title": "Northwind rebrand",
+      "description": "<p>Logo, type system and brand guidelines.</p>",
+      "value": 6800,
+      "stage": "delivered",
+      "clientId": "demo-client-northwind",
+      "invoiceMonth": null,
+      "colour": "teal",
+      "expenses": [
+        {
+          "id": "demo-exp1",
+          "label": "Stock photography",
+          "amount": 120,
+          "chargeable": true
+        },
+        {
+          "id": "demo-exp2",
+          "label": "Freelance illustrator",
+          "amount": 450,
+          "chargeable": false
+        }
+      ],
+      "archived": false,
+      "createdAt": "2026-08-16T16:46:41.696Z",
+      "updatedAt": "2026-09-13T16:46:41.696Z"
+    },
+    "demo-project-brightpath-onboarding": {
+      "id": "demo-project-brightpath-onboarding",
+      "title": "Bright Path onboarding flow",
+      "description": "<p>New user onboarding — five screens, one empty state.</p>",
+      "value": 3200,
+      "stage": "quoted",
+      "clientId": "demo-client-brightpath",
+      "invoiceMonth": null,
+      "colour": "green",
+      "expenses": [],
+      "archived": false,
+      "createdAt": "2026-08-16T16:46:41.696Z",
+      "updatedAt": "2026-09-13T16:46:41.696Z"
+    },
+    "demo-project-solstice-campaign": {
+      "id": "demo-project-solstice-campaign",
+      "title": "Solstice social campaign",
+      "description": "<p>Six-week paid social push across three platforms.</p>",
+      "value": 5200,
+      "stage": "invoiced",
+      "clientId": "demo-client-solstice",
+      "invoiceMonth": "2026-08",
+      "colour": "amber",
+      "expenses": [
+        {
+          "id": "demo-exp3",
+          "label": "Ad spend",
+          "amount": 800,
+          "chargeable": true
+        }
+      ],
+      "archived": false,
+      "createdAt": "2026-08-16T16:46:41.696Z",
+      "updatedAt": "2026-09-13T16:46:41.696Z"
+    },
+    "demo-project-harbor-guidelines": {
+      "id": "demo-project-harbor-guidelines",
+      "title": "Harbor brand guidelines",
+      "description": "<p>Guidelines document covering logo use, colour and type.</p>",
+      "value": 2800,
+      "stage": "paid",
+      "clientId": "demo-client-harbor",
+      "invoiceMonth": "2026-07",
+      "colour": "purple",
+      "expenses": [],
+      "archived": false,
+      "createdAt": "2026-08-16T16:46:41.696Z",
+      "updatedAt": "2026-09-13T16:46:41.696Z"
+    },
+    "demo-project-acme-mobile": {
+      "id": "demo-project-acme-mobile",
+      "title": "Acme mobile app",
+      "description": "<p>Native app proposal — client went with an in-house team instead.</p>",
+      "value": 9000,
+      "stage": "lost",
+      "clientId": "demo-client-acme",
+      "invoiceMonth": null,
+      "colour": "blue",
+      "expenses": [],
+      "archived": false,
+      "createdAt": "2026-08-16T16:46:41.696Z",
+      "updatedAt": "2026-09-13T16:46:41.696Z"
+    }
+  },
+  "clients": {
+    "demo-client-acme": {
+      "id": "demo-client-acme",
+      "name": "Acme Ltd",
+      "colour": "#2179c8"
+    },
+    "demo-client-northwind": {
+      "id": "demo-client-northwind",
+      "name": "Northwind Design",
+      "colour": "#0f8f8a"
+    },
+    "demo-client-brightpath": {
+      "id": "demo-client-brightpath",
+      "name": "Bright Path Co",
+      "colour": "#6f9c22"
+    },
+    "demo-client-solstice": {
+      "id": "demo-client-solstice",
+      "name": "Solstice Media",
+      "colour": "#c68512"
+    },
+    "demo-client-harbor": {
+      "id": "demo-client-harbor",
+      "name": "Harbor & Vine",
+      "colour": "#7b4a9e"
+    }
+  },
+  "clientOrder": [
+    "demo-client-acme",
+    "demo-client-northwind",
+    "demo-client-brightpath",
+    "demo-client-solstice",
+    "demo-client-harbor"
+  ],
+  "orphanedEvents": []
+}
