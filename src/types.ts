@@ -172,6 +172,10 @@ export interface Expense {
   label: string;
   /** Pounds. */
   amount: number;
+  /** Billed on to the client and recovered in full, rather than coming out of
+   *  what the project earns. Defaults to false: an expense is a project cost
+   *  unless it is marked otherwise. */
+  chargeable: boolean;
 }
 
 export const EXPENSE_LABEL_MAX = 60;
@@ -210,9 +214,17 @@ export interface Project {
   updatedAt: string;
 }
 
-/** What a project's expenses come to. */
-export function totalExpenses(project: Project): number {
-  return project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
+/** The expenses that come out of what the project earns — everything not
+ *  marked chargeable. This, not the total, is what the project's net is
+ *  worked out from. */
+export function projectCosts(project: Project): number {
+  return project.expenses.reduce((sum, expense) => (expense.chargeable ? sum : sum + expense.amount), 0);
+}
+
+/** Expenses billed on to the client rather than absorbed — recovered in
+ *  full, so they leave the project's own margin untouched. */
+export function chargeableExpenses(project: Project): number {
+  return project.expenses.reduce((sum, expense) => (expense.chargeable ? sum + expense.amount : sum), 0);
 }
 
 /* ---------- settings ---------- */

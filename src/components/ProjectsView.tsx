@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import type { Card, CategoryId, LaneId, Project, ProjectStage, StageGroup } from '../types';
+import type { Card, CategoryId, Expense, LaneId, Project, ProjectStage, StageGroup } from '../types';
 import {
   BACKLOG,
   CATEGORY_IDS,
@@ -10,8 +10,9 @@ import {
   STAGE_LABELS,
   STATUS_LABELS,
   categoryLabel,
+  chargeableExpenses,
   formatMoney,
-  totalExpenses,
+  projectCosts,
 } from '../types';
 import { uid } from '../store';
 import { useCategories } from '../categories';
@@ -73,20 +74,85 @@ function ValueField({ project, onPatch }: { project: Project; onPatch: Props['on
   );
 }
 
+/** One expense, already on the project. Its label and amount are edited in
+ *  place — a mistyped figure gets corrected, not deleted and retyped — the
+ *  same as every other field on a project. */
+function ExpenseRow({
+  expense,
+  onChange,
+  onRemove,
+}: {
+  expense: Expense;
+  onChange: (id: string, patch: Partial<Expense>) => void;
+  onRemove: (id: string) => void;
+}) {
+  // Same reasoning as the project's own Value field: bound straight to the
+  // number, clearing the box to type a new figure would snap back to 0.
+  const [amountDraft, setAmountDraft] = useState(String(expense.amount || ''));
+  useEffect(() => setAmountDraft(String(expense.amount || '')), [expense.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <li className="expense-row">
+      <input
+        className="expense-label-input"
+        value={expense.label}
+        placeholder="Expense"
+        maxLength={EXPENSE_LABEL_MAX}
+        aria-label="Expense label"
+        onChange={(event) => onChange(expense.id, { label: event.target.value })}
+      />
+      <label className="expense-toggle" title="Billed on to the client and recovered in full">
+        <input
+          type="checkbox"
+          checked={expense.chargeable}
+          onChange={(event) => onChange(expense.id, { chargeable: event.target.checked })}
+        />
+        Chargeable
+      </label>
+      <span className="money expense-money">
+        <span className="money-sign" aria-hidden="true">£</span>
+        <input
+          type="number"
+          min={0}
+          step={1}
+          className="money-input"
+          value={amountDraft}
+          aria-label="Expense amount"
+          onChange={(event) => {
+            setAmountDraft(event.target.value);
+            onChange(expense.id, { amount: Math.max(0, Number(event.target.value) || 0) });
+          }}
+        />
+      </span>
+      <button
+        type="button"
+        className="ghost icon"
+        onClick={() => onRemove(expense.id)}
+        title={`Remove ${expense.label || 'this expense'}`}
+        aria-label={`Remove ${expense.label || 'this expense'}`}
+      >
+        ✕
+      </button>
+    </li>
+  );
+}
+
 /** Costs against a project's value — a prop, a freelancer, travel — kept as a
  *  running list rather than one lump figure, so what each one was for stays on
  *  the record. */
 function ExpensesField({ project, onPatch }: { project: Project; onPatch: Props['onPatch'] }) {
   const [label, setLabel] = useState('');
   const [amount, setAmount] = useState('');
+  const [chargeable, setChargeable] = useState(false);
 
   const add = () => {
     const text = label.trim();
     const value = Math.max(0, Number(amount) || 0);
     if (!text || value <= 0) return;
-    onPatch(project.id, { expenses: [...project.expenses, { id: uid(), label: text, amount: value }] });
+    onPatch(project.id, { expenses: [...project.expenses, { id: uid(), label: text, amount: value, chargeable }] });
     setLabel('');
     setAmount('');
+    setChargeable(false);
   };
 
   const onKey = (event: React.KeyboardEvent) => {
@@ -95,30 +161,33 @@ function ExpensesField({ project, onPatch }: { project: Project; onPatch: Props[
     add();
   };
 
+  const update = (id: string, patch: Partial<Expense>) =>
+    onPatch(project.id, {
+      expenses: project.expenses.map((expense) => (expense.id === id ? { ...expense, ...patch } : expense)),
+    });
+
   const remove = (id: string) => onPatch(project.id, { expenses: project.expenses.filter((expense) => expense.id !== id) });
 
-  const total = totalExpenses(project);
+  const costs = projectCosts(project);
+  const chargeableTotal = chargeableExpenses(project);
+  const summary = [
+    costs > 0 && `${formatMoney(costs)} in project costs`,
+    chargeableTotal > 0 && `${formatMoney(chargeableTotal)} chargeable to the client`,
+    (costs > 0 || chargeableTotal > 0) && `${formatMoney(project.value - costs)} net`,
+  ].filter(Boolean);
 
   return (
     <div className="field">
       <span className="field-label">Expenses</span>
+      <p className="field-note">
+        Tick “Chargeable” for a cost billed on to the client and recovered in full — leave it unticked for a project
+        cost, which comes off the project's net.
+      </p>
 
       <ul className="expense-list">
         {project.expenses.length === 0 && <li className="split-empty">No expenses on this project yet.</li>}
         {project.expenses.map((expense) => (
-          <li key={expense.id} className="expense-row">
-            <span className="expense-label">{expense.label}</span>
-            <span className="expense-amount">{formatMoney(expense.amount)}</span>
-            <button
-              type="button"
-              className="ghost icon"
-              onClick={() => remove(expense.id)}
-              title={`Remove ${expense.label}`}
-              aria-label={`Remove ${expense.label}`}
-            >
-              ✕
-            </button>
-          </li>
+          <ExpenseRow key={expense.id} expense={expense} onChange={update} onRemove={remove} />
         ))}
       </ul>
 
@@ -131,6 +200,10 @@ function ExpensesField({ project, onPatch }: { project: Project; onPatch: Props[
           onChange={(event) => setLabel(event.target.value)}
           onKeyDown={onKey}
         />
+        <label className="expense-toggle" title="Billed on to the client and recovered in full">
+          <input type="checkbox" checked={chargeable} onChange={(event) => setChargeable(event.target.checked)} />
+          Chargeable
+        </label>
         <span className="money expense-money">
           <span className="money-sign" aria-hidden="true">£</span>
           <input
@@ -149,11 +222,7 @@ function ExpensesField({ project, onPatch }: { project: Project; onPatch: Props[
         </button>
       </div>
 
-      {total > 0 && (
-        <p className="field-note">
-          {formatMoney(total)} in costs · {formatMoney(project.value - total)} net
-        </p>
-      )}
+      {summary.length > 0 && <p className="field-note">{summary.join(' · ')}</p>}
     </div>
   );
 }
@@ -235,7 +304,8 @@ function tally(entries: { card: Card; lane: LaneId }[]): Tally {
  * the one nobody works out by hand.
  */
 function ProjectStats({ project, stats }: { project: Project; stats: Tally }) {
-  const costs = totalExpenses(project);
+  const costs = projectCosts(project);
+  const chargeable = chargeableExpenses(project);
   const rate = stats.hours > 0 && project.value > 0 ? project.value / stats.hours : null;
   // Hours are the honest measure of how far along something is; card counts
   // treat a ten-minute job and a two-day one as the same thing. Unsized cards
@@ -288,10 +358,18 @@ function ProjectStats({ project, stats }: { project: Project; stats: Tally }) {
         </li>
 
         {costs > 0 && (
-          <li className="projstat" title={`${formatMoney(project.value)} minus ${formatMoney(costs)} of expenses`}>
+          <li className="projstat" title={`${formatMoney(project.value)} minus ${formatMoney(costs)} of project costs — chargeable expenses aren't counted, since they're recovered in full`}>
             <span className="projstat-label">Net</span>
             <span className="projstat-value">{formatMoney(project.value - costs)}</span>
             <span className="projstat-note">after {formatMoney(costs)} costs</span>
+          </li>
+        )}
+
+        {chargeable > 0 && (
+          <li className="projstat" title="Expenses billed on to the client, recovered in full">
+            <span className="projstat-label">Billed on</span>
+            <span className="projstat-value">{formatMoney(chargeable)}</span>
+            <span className="projstat-note">chargeable</span>
           </li>
         )}
 
