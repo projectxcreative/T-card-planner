@@ -1655,6 +1655,68 @@ button, input, select, textarea { font: inherit; color: inherit; }
    screen floats it free on every side, so it needs the rest of the frame. */
 .drawer.is-full { border: 1px solid var(--line); }
 
+/* ---------- projects: a full-width list, the detail in a window ---------- */
+
+/* The project list used to share the cramped two-column split with Clients;
+   on its own page it gets the room a list of rows actually needs. */
+.proj-page { display: flex; flex-direction: column; }
+.split-list.is-full { max-width: 900px; margin-inline: auto; width: 100%; }
+
+.proj-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.proj-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-left: 4px solid var(--c);
+  border-radius: var(--radius);
+  text-align: left;
+  cursor: pointer;
+}
+
+.proj-row:hover { border-color: var(--line); }
+.proj-row.is-on { background: var(--accent-soft); border-color: var(--accent); }
+.proj-row.is-archived { opacity: 0.6; }
+
+.proj-row-title { flex: 1 1 220px; min-width: 0; font-size: var(--t-item); font-weight: 620; overflow-wrap: anywhere; }
+.proj-row-tags { flex: 0 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+.proj-row-figures { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; min-width: 90px; }
+.proj-row-value { font-size: var(--t-item); font-weight: 650; font-variant-numeric: tabular-nums; }
+.proj-row-meta { font-size: var(--t-meta); color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* The detail opens over the list rather than beside it — the same window a
+   card opens in, just wider, since a project carries more fields. */
+.modal.is-project { width: min(720px, 100%); max-height: min(88vh, 900px); }
+.modal.is-project .split-detail-body { overflow-y: auto; }
+
+/* ---------- project expenses ---------- */
+
+.expense-list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.expense-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
+.expense-label { flex: 1; min-width: 0; font-size: var(--t-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.expense-amount { flex: none; font-size: var(--t-body); font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.expense-money { flex: none; width: 110px; }
+
+@media (max-width: 700px) {
+  .proj-row-figures { align-items: flex-start; }
+}
+
 /* ---------- narrow screens, new views ---------- */
 
 @media (max-width: 1080px) {

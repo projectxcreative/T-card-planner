@@ -164,6 +164,18 @@ export function billingBucket(stage: ProjectStage): BillingBucket | null {
   return isLost(stage) ? null : 'todo';
 }
 
+/** A cost against a project — a prop, a freelancer, travel — kept separate
+ *  from its value so what it earns and what it costs stay two figures rather
+ *  than one blurred one. */
+export interface Expense {
+  id: string;
+  label: string;
+  /** Pounds. */
+  amount: number;
+}
+
+export const EXPENSE_LABEL_MAX = 60;
+
 /** A piece of billable work several cards belong to. The value is what the
  *  whole thing is worth, in whole pounds — enough to see what a week of cards
  *  is actually earning, without turning the planner into an invoicing tool. */
@@ -190,10 +202,17 @@ export interface Project {
   invoiceMonth: string | null;
   /** Cards created inside a project start with this category. */
   colour: CategoryId;
+  /** Costs against the project's value — expenses, not time. */
+  expenses: Expense[];
   /** Archived projects drop out of the pickers but keep their cards. */
   archived: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/** What a project's expenses come to. */
+export function totalExpenses(project: Project): number {
+  return project.expenses.reduce((sum, expense) => sum + expense.amount, 0);
 }
 
 /* ---------- settings ---------- */

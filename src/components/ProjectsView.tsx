@@ -3,6 +3,7 @@ import type { Card, CategoryId, LaneId, Project, ProjectStage, StageGroup } from
 import {
   BACKLOG,
   CATEGORY_IDS,
+  EXPENSE_LABEL_MAX,
   PROJECT_STAGES,
   STAGE_GROUP,
   STAGE_GROUP_LABELS,
@@ -10,7 +11,9 @@ import {
   STATUS_LABELS,
   categoryLabel,
   formatMoney,
+  totalExpenses,
 } from '../types';
+import { uid } from '../store';
 import { useCategories } from '../categories';
 import { useLookups } from '../lookups';
 import { formatEstimate } from '../cardText';
@@ -67,6 +70,91 @@ function ValueField({ project, onPatch }: { project: Project; onPatch: Props['on
         />
       </span>
     </label>
+  );
+}
+
+/** Costs against a project's value — a prop, a freelancer, travel — kept as a
+ *  running list rather than one lump figure, so what each one was for stays on
+ *  the record. */
+function ExpensesField({ project, onPatch }: { project: Project; onPatch: Props['onPatch'] }) {
+  const [label, setLabel] = useState('');
+  const [amount, setAmount] = useState('');
+
+  const add = () => {
+    const text = label.trim();
+    const value = Math.max(0, Number(amount) || 0);
+    if (!text || value <= 0) return;
+    onPatch(project.id, { expenses: [...project.expenses, { id: uid(), label: text, amount: value }] });
+    setLabel('');
+    setAmount('');
+  };
+
+  const onKey = (event: React.KeyboardEvent) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    add();
+  };
+
+  const remove = (id: string) => onPatch(project.id, { expenses: project.expenses.filter((expense) => expense.id !== id) });
+
+  const total = totalExpenses(project);
+
+  return (
+    <div className="field">
+      <span className="field-label">Expenses</span>
+
+      <ul className="expense-list">
+        {project.expenses.length === 0 && <li className="split-empty">No expenses on this project yet.</li>}
+        {project.expenses.map((expense) => (
+          <li key={expense.id} className="expense-row">
+            <span className="expense-label">{expense.label}</span>
+            <span className="expense-amount">{formatMoney(expense.amount)}</span>
+            <button
+              type="button"
+              className="ghost icon"
+              onClick={() => remove(expense.id)}
+              title={`Remove ${expense.label}`}
+              aria-label={`Remove ${expense.label}`}
+            >
+              ✕
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="split-addcard">
+        <input
+          className="lane-add-input"
+          value={label}
+          placeholder="Expense, e.g. props, travel, freelancer"
+          maxLength={EXPENSE_LABEL_MAX}
+          onChange={(event) => setLabel(event.target.value)}
+          onKeyDown={onKey}
+        />
+        <span className="money expense-money">
+          <span className="money-sign" aria-hidden="true">£</span>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            className="money-input"
+            value={amount}
+            placeholder="0"
+            onChange={(event) => setAmount(event.target.value)}
+            onKeyDown={onKey}
+          />
+        </span>
+        <button type="button" className="ghost" onClick={add}>
+          Add
+        </button>
+      </div>
+
+      {total > 0 && (
+        <p className="field-note">
+          {formatMoney(total)} in costs · {formatMoney(project.value - total)} net
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -147,6 +235,7 @@ function tally(entries: { card: Card; lane: LaneId }[]): Tally {
  * the one nobody works out by hand.
  */
 function ProjectStats({ project, stats }: { project: Project; stats: Tally }) {
+  const costs = totalExpenses(project);
   const rate = stats.hours > 0 && project.value > 0 ? project.value / stats.hours : null;
   // Hours are the honest measure of how far along something is; card counts
   // treat a ten-minute job and a two-day one as the same thing. Unsized cards
@@ -197,6 +286,14 @@ function ProjectStats({ project, stats }: { project: Project; stats: Tally }) {
           <span className="projstat-value">{rate ? `${formatMoney(Math.round(rate))}` : '—'}</span>
           <span className="projstat-note">per hour</span>
         </li>
+
+        {costs > 0 && (
+          <li className="projstat" title={`${formatMoney(project.value)} minus ${formatMoney(costs)} of expenses`}>
+            <span className="projstat-label">Net</span>
+            <span className="projstat-value">{formatMoney(project.value - costs)}</span>
+            <span className="projstat-note">after {formatMoney(costs)} costs</span>
+          </li>
+        )}
 
         <li
           className="projstat"
@@ -399,8 +496,8 @@ export default function ProjectsView(props: Props) {
   };
 
   return (
-    <div className="split">
-      <aside className="split-list">
+    <div className="proj-page">
+      <section className="split-list is-full">
         <header className="split-list-head">
           <h2 className="split-heading">Projects</h2>
           <span className="split-total" title="Won, delivered and invoiced — everything you are owed or committed to">
@@ -442,12 +539,12 @@ export default function ProjectsView(props: Props) {
           />
         </div>
 
-        <ul className="split-items">
+        <ul className="proj-list">
           {projects.length === 0 && <li className="split-empty">No projects yet.</li>}
           {projects.map((project, index) => {
             const own = tallies[project.id] ?? tally(cardsOf(project.id));
             const client = project.clientId ? clients[project.clientId] : undefined;
-            const classes = ['split-item', `c-${project.colour}`];
+            const classes = ['proj-row', `c-${project.colour}`];
             if (project.id === selected) classes.push('is-on');
             if (project.archived) classes.push('is-archived');
             // The list arrives in pipeline order, so a heading goes wherever the
@@ -463,39 +560,48 @@ export default function ProjectsView(props: Props) {
               <li key={project.id}>
                 {heading && <p className="split-group">{heading}</p>}
                 <button type="button" className={classes.join(' ')} onClick={() => onSelect(project.id)}>
-                  <span className="split-item-title">{project.title || 'Untitled project'}</span>
-                  <span className="split-item-meta">
-                    {formatMoney(project.value)} · {own.cards} card{own.cards === 1 ? '' : 's'}
-                    {own.hours > 0 ? ` · ${formatEstimate(own.hours)}` : ''}
-                    {project.archived ? ' · archived' : ''}
-                  </span>
-                  <span className="split-item-clients">
+                  <span className="proj-row-title">{project.title || 'Untitled project'}</span>
+                  <span className="proj-row-tags">
                     <span className={`stage s-stage-${STAGE_GROUP[project.stage]}`}>{STAGE_LABELS[project.stage]}</span>
                     {client && (
                       <span className="chip is-compact" style={{ '--chip': client.colour } as React.CSSProperties}>
                         {client.name}
                       </span>
                     )}
+                    {project.archived && <span className="chip is-compact">Archived</span>}
+                  </span>
+                  <span className="proj-row-figures">
+                    <span className="proj-row-value">{formatMoney(project.value)}</span>
+                    <span className="proj-row-meta">
+                      {own.cards} card{own.cards === 1 ? '' : 's'}
+                      {own.hours > 0 ? ` · ${formatEstimate(own.hours)}` : ''}
+                    </span>
                   </span>
                 </button>
               </li>
             );
           })}
         </ul>
-      </aside>
+      </section>
 
-      <section className="split-detail">
-        {!active ? (
-          <div className="split-blank">
-            <h3>Pick a project</h3>
-            <p>
-              A project gathers the cards for one piece of work, carries what it is worth and who it is for, and
-              moves down the pipeline from enquiry to paid. Cards keep their own day, so a project is a plan rather
-              than a second board.
-            </p>
-          </div>
-        ) : (
-          <>
+      {active && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) onSelect(null);
+          }}
+        >
+          <section
+            className="modal is-project"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Project details"
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape') return;
+              event.stopPropagation();
+              onSelect(null);
+            }}
+          >
             <header className="split-detail-head" inert={locked || undefined}>
               <input
                 className="drawer-title"
@@ -523,6 +629,9 @@ export default function ProjectsView(props: Props) {
                   }}
                 >
                   Delete
+                </button>
+                <button type="button" className="ghost" onClick={() => onSelect(null)} title="Close (Esc)" aria-label="Close">
+                  ✕
                 </button>
               </div>
             </header>
@@ -610,6 +719,8 @@ export default function ProjectsView(props: Props) {
                 )}
               </label>
 
+              <ExpensesField project={active} onPatch={onPatch} />
+
               <div className="field">
                 <span className="field-label">Description</span>
                 <ProjectDescription key={active.id} project={active} onPatch={onPatch} />
@@ -664,9 +775,9 @@ export default function ProjectsView(props: Props) {
                 </ul>
               </div>
             </div>
-          </>
-        )}
-      </section>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

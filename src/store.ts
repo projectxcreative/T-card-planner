@@ -4,6 +4,7 @@ import {
   CLIENT_NAME_MAX,
   CLIENT_PALETTE,
   DEFAULT_CATEGORIES,
+  EXPENSE_LABEL_MAX,
   LABEL_MAX,
   BILLING_BUCKETS,
   PROJECT_STAGES,
@@ -17,6 +18,7 @@ import {
   type CategoryId,
   type Client,
   type BillingBucket,
+  type Expense,
   type LaneId,
   type Project,
   type ProjectStage,
@@ -77,6 +79,7 @@ export function newProject(title: string, patch: Partial<Project> = {}): Project
     clientId: null,
     invoiceMonth: null,
     colour: 'blue',
+    expenses: [],
     archived: false,
     createdAt: now,
     updatedAt: now,
@@ -547,6 +550,21 @@ function oneClient(value: Partial<Project> & { clients?: unknown }, clients: Rec
   return null;
 }
 
+/** Boards written before expenses existed simply arrive without them; a
+ *  hand-edited or malformed entry is dropped rather than sinking the project. */
+function normaliseExpenses(input: unknown): Expense[] {
+  if (!Array.isArray(input)) return [];
+  const expenses: Expense[] = [];
+  for (const value of input as Partial<Expense>[]) {
+    if (!value || typeof value !== 'object') continue;
+    const label = typeof value.label === 'string' ? value.label.trim().slice(0, EXPENSE_LABEL_MAX) : '';
+    if (!label) continue;
+    const amount = Number.isFinite(value.amount) ? Math.max(0, Number(value.amount)) : 0;
+    expenses.push({ id: typeof value.id === 'string' && value.id ? value.id : uid(), label, amount });
+  }
+  return expenses;
+}
+
 function normaliseProjects(input: unknown, clients: Record<string, Client>): Record<string, Project> {
   const raw = (input ?? {}) as Record<string, Partial<Project>>;
   const projects: Record<string, Project> = {};
@@ -563,6 +581,7 @@ function normaliseProjects(input: unknown, clients: Record<string, Client>): Rec
       invoiceMonth: typeof value.invoiceMonth === 'string' && /^\d{4}-\d{2}$/.test(value.invoiceMonth) ? value.invoiceMonth : null,
       clientId: oneClient(value, clients),
       colour: CATEGORY_IDS.includes(value.colour as CategoryId) ? (value.colour as CategoryId) : 'blue',
+      expenses: normaliseExpenses(value.expenses),
       archived: value.archived === true,
       createdAt: value.createdAt ?? now,
       updatedAt: value.updatedAt ?? now,
