@@ -43,6 +43,9 @@ export interface CardPanelProps {
   surface: CardSurface;
   /** True once a Microsoft 365 calendar is connected on this device. */
   calendarReady: boolean;
+  /** The server can't be reached: the card still opens to look at, but
+   *  nothing in it can be changed until sync is back. */
+  locked?: boolean;
   onPatch: (id: string, patch: Partial<Card>) => void;
   onMove: (id: string, lane: LaneId) => void;
   onDuplicate: (id: string) => void;
@@ -95,7 +98,7 @@ function useGrowToFit(ref: React.RefObject<HTMLTextAreaElement | null>, value: s
 }
 
 function CardBody(props: CardPanelProps) {
-  const { card, lane, calendarReady, onPatch, onMove } = props;
+  const { card, lane, calendarReady, locked, onPatch, onMove } = props;
   const categories = useCategories();
   const { projects, clients, clientOrder } = useLookups();
   const [html, setHtml] = useState(card.description);
@@ -151,7 +154,7 @@ function CardBody(props: CardPanelProps) {
   };
 
   return (
-    <div className="drawer-body">
+    <div className="drawer-body" inert={locked || undefined}>
       <textarea
         ref={titleRef}
         className="drawer-title"
@@ -325,6 +328,7 @@ function CardBody(props: CardPanelProps) {
 function CardHead({
   card,
   lane,
+  locked,
   fullScreen,
   onToggleFullScreen,
   onDuplicate,
@@ -336,12 +340,13 @@ function CardHead({
       <span className={`drawer-swatch c-${card.colour}`} aria-hidden="true" />
       <span className="drawer-where">{lane === BACKLOG ? 'Backlog' : formatFullDay(lane)}</span>
       <div className="drawer-head-actions">
-        <button type="button" className="ghost" onClick={() => onDuplicate(card.id)} title="Duplicate card">
+        <button type="button" className="ghost" disabled={locked} onClick={() => onDuplicate(card.id)} title="Duplicate card">
           Duplicate
         </button>
         <button
           type="button"
           className="ghost danger"
+          disabled={locked}
           onClick={() => {
             if (window.confirm(`Delete “${card.title || 'Untitled card'}”?`)) onDelete(card.id);
           }}

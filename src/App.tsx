@@ -89,7 +89,7 @@ import { summarise } from './cardText';
 import { useSync } from './sync';
 import { useAppUpdate } from './updates';
 import { effectiveConfig, useM365, usePublishing } from './m365';
-import { ConflictBar } from './components/SyncBadge';
+import { ConflictBar, OfflineBar } from './components/SyncBadge';
 
 const SETTINGS_KEY = 'tcard-planner.settings.v1';
 const HISTORY_LIMIT = 40;
@@ -122,7 +122,7 @@ function loadSettings(): Settings {
 }
 
 export default function App() {
-  const [board, dispatch] = useReducer(reducer, undefined, load);
+  const [board, rawDispatch] = useReducer(reducer, undefined, load);
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [view, setView] = useState<ViewMode>('week');
   /** One day the whole app is looking at; each view reads the week, day or
@@ -176,13 +176,27 @@ export default function App() {
   const swapBoard = useCallback((state: BoardState) => {
     const previous = latestBoard.current;
     const stranded = [...previous.orphanedEvents, ...strandedEvents(previous, state)];
-    dispatch({ type: 'replace', state });
-    if (stranded.length > 0) dispatch({ type: 'orphanEvents', ids: stranded });
+    // Always raw: adopting the server's board (or an import) isn't a local
+    // edit that needs blocking while offline — it's how the device catches up.
+    rawDispatch({ type: 'replace', state });
+    if (stranded.length > 0) rawDispatch({ type: 'orphanEvents', ids: stranded });
   }, []);
 
   const adoptRemote = swapBoard;
   const sync = useSync(board, adoptRemote);
   const update = useAppUpdate();
+
+  // The server can't be reached, so a local edit now would only desync
+  // further and leave you guessing what actually saved. Every board mutation
+  // goes through this one gate.
+  const locked = sync.status === 'offline';
+  const dispatch = useCallback(
+    (action: Action) => {
+      if (locked) return;
+      rawDispatch(action);
+    },
+    [locked],
+  );
 
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -474,6 +488,10 @@ export default function App() {
   }, [board]);
 
   const importBoard = useCallback(async (file: File) => {
+    if (locked) {
+      window.alert("You're offline, so the board can't be replaced right now — the server couldn't be told about it. Try again once sync is back.");
+      return;
+    }
     try {
       const state = normalise(JSON.parse(await file.text()));
       const count = Object.keys(state.cards).length;
@@ -484,7 +502,7 @@ export default function App() {
     } catch {
       window.alert(`Couldn't read that file — it doesn't look like a T-Card Planner export.`);
     }
-  }, [snapshot, swapBoard]);
+  }, [locked, snapshot, swapBoard]);
 
   /* ---------- keyboard ---------- */
 
@@ -651,7 +669,7 @@ export default function App() {
             settings={settings}
             onSettings={(patch) => setSettings((current) => ({ ...current, ...patch }))}
             onOpenSettings={() => setShowSettings(true)}
-            canUndo={past.length > 0}
+            canUndo={past.length > 0 && !locked}
             onUndo={undo}
             searchRef={searchRef}
             clients={clientList}
@@ -662,6 +680,7 @@ export default function App() {
           />
 
           <ConflictBar sync={sync} />
+          <OfflineBar sync={sync} />
 
           {banner && (
             <p className="calendar-banner" role="status">
@@ -670,7 +689,7 @@ export default function App() {
           )}
 
           <DndContext
-            sensors={sensors}
+            sensors={locked ? [] : sensors}
             collisionDetection={collisionDetection}
             measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
             onDragStart={onDragStart}
@@ -688,6 +707,7 @@ export default function App() {
                   matches={matches}
                   isBacklog
                   capacity={settings.capacity}
+                  locked={locked}
                   onOpen={setOpenId}
                   onQuickAdd={quickAdd}
                   onNewFromProject={newCardFromCard}
@@ -706,6 +726,7 @@ export default function App() {
                     isPast={isPast(day)}
                     isWeekend={isWeekend(day)}
                     capacity={settings.capacity}
+                    locked={locked}
                     events={m365.events.get(day)}
                     onOpen={setOpenId}
                     onQuickAdd={quickAdd}
@@ -744,6 +765,7 @@ export default function App() {
                 events={m365.events.get(focus) ?? []}
                 settings={settings}
                 calendarReady={calendarReady}
+                locked={locked}
                 onOpen={setOpenId}
                 onPatch={patchCard}
                 onQuickAdd={quickAdd}
@@ -766,6 +788,7 @@ export default function App() {
                 onMoveCard={moveCard}
                 attachable={projectSpare}
                 onAttachCard={attachProjectCard}
+                locked={locked}
               />
             </main>
           )}
@@ -777,6 +800,7 @@ export default function App() {
                 clients={board.clients}
                 onMonth={(id, invoiceMonth) => patchProject(id, { invoiceMonth })}
                 onOpenProject={openProjectFrom}
+                locked={locked}
               />
             </main>
           )}
@@ -796,6 +820,7 @@ export default function App() {
                 onOpenCard={setOpenId}
                 onOpenProject={openProjectFrom}
                 onMoveCard={moveCard}
+                locked={locked}
               />
             </main>
           )}
@@ -807,6 +832,7 @@ export default function App() {
               lane={openLane}
               surface={settings.cardSurface}
               calendarReady={calendarReady}
+              locked={locked}
               onPatch={patchCard}
               onMove={moveCard}
               onDuplicate={(id) => dispatch({ type: 'duplicate', id })}
@@ -830,6 +856,7 @@ export default function App() {
               onAddClient={addClient}
               onClient={(id, patch) => dispatch({ type: 'updateClient', id, patch })}
               onDeleteClient={deleteClient}
+              locked={locked}
               settings={settings}
               onSettings={(patch) => setSettings((current) => ({ ...current, ...patch }))}
               m365={m365}

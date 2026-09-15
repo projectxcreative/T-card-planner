@@ -135,6 +135,26 @@ export default function SyncBadge({ sync }: { sync: Sync }) {
   );
 }
 
+/** Shown across the top of the board while the server can't be reached.
+ *  Editing is blocked meanwhile, so this is the thing that explains why. */
+export function OfflineBar({ sync }: { sync: Sync }) {
+  if (sync.status !== 'offline') return null;
+
+  return (
+    <div className="conflict is-offline" role="alert">
+      <span>
+        Can't reach the server, so editing is paused — nothing typed here would make it to your other
+        devices right now. It'll pick back up as soon as the connection is back.
+      </span>
+      <div className="conflict-actions">
+        <button type="button" className="ghost accent" onClick={sync.syncNow}>
+          Try again
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Shown across the top of the board while a conflict is unresolved. */
 export function ConflictBar({ sync }: { sync: Sync }) {
   if (sync.status !== 'conflict' || !sync.conflict) return null;
