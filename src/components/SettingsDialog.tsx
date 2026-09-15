@@ -25,6 +25,9 @@ interface Props {
   onAddClient: (name: string) => void;
   onClient: (id: string, patch: Partial<Client>) => void;
   onDeleteClient: (id: string) => void;
+  /** The server can't be reached: categories, clients and importing a backup
+   *  are paused. Everything else here is local-only and stays usable. */
+  locked?: boolean;
   settings: Settings;
   onSettings: (patch: Partial<Settings>) => void;
   m365: M365;
@@ -36,7 +39,7 @@ interface Props {
 export default function SettingsDialog(props: Props) {
   const {
     categories, counts, onCategory, onResetCategories,
-    clients, clientCounts, onAddClient, onClient, onDeleteClient,
+    clients, clientCounts, onAddClient, onClient, onDeleteClient, locked,
     settings, onSettings, m365, onExport, onImport, onClose,
   } = props;
   const fileRef = useRef<HTMLInputElement>(null);
@@ -91,6 +94,7 @@ export default function SettingsDialog(props: Props) {
               <button
                 type="button"
                 className="ghost"
+                disabled={locked}
                 onClick={onResetCategories}
                 title="Put every label and colour back to how it started"
               >
@@ -100,9 +104,10 @@ export default function SettingsDialog(props: Props) {
             <p className="settings-note">
               Eight of them, one per colour. Rename or recolour as you like — cards keep the category you
               gave them, so a rename reaches every card at once.
+              {locked && " Can't reach the server right now, so this is paused."}
             </p>
 
-            <ul className="cat-list">
+            <ul className="cat-list" inert={locked || undefined}>
               {CATEGORY_IDS.map((id) => {
                 const category = categories[id];
                 const used = counts[id] ?? 0;
@@ -144,7 +149,7 @@ export default function SettingsDialog(props: Props) {
               from categories — the category is what kind of work it is, the client is who it's for.
             </p>
 
-            <ul className="cat-list">
+            <ul className="cat-list" inert={locked || undefined}>
               {clients.map((client) => {
                 const used = clientCounts[client.id] ?? 0;
                 return (
@@ -195,6 +200,7 @@ export default function SettingsDialog(props: Props) {
                 maxLength={CLIENT_NAME_MAX}
                 placeholder="Add a client"
                 aria-label="New client name"
+                disabled={locked}
                 onChange={(event) => setNewClient(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
@@ -203,7 +209,7 @@ export default function SettingsDialog(props: Props) {
                   }
                 }}
               />
-              <button type="button" className="ghost" onClick={addClient} disabled={!newClient.trim()}>
+              <button type="button" className="ghost" onClick={addClient} disabled={locked || !newClient.trim()}>
                 Add
               </button>
             </div>
@@ -449,7 +455,13 @@ export default function SettingsDialog(props: Props) {
               <button type="button" className="ghost" onClick={onExport}>
                 Export a backup
               </button>
-              <button type="button" className="ghost" onClick={() => fileRef.current?.click()}>
+              <button
+                type="button"
+                className="ghost"
+                disabled={locked}
+                title={locked ? "Can't reach the server, so importing is paused" : undefined}
+                onClick={() => fileRef.current?.click()}
+              >
                 Import a backup
               </button>
             </div>

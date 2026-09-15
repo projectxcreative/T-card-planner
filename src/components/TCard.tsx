@@ -187,16 +187,20 @@ interface SortableProps {
   card: Card;
   lane: LaneId;
   dimmed?: boolean;
+  /** The server can't be reached: dragging and the right-click menu are off,
+   *  but the card still opens — offline is for editing, not for looking. */
+  locked?: boolean;
   onOpen: (id: string) => void;
   /** Start a fresh card carrying this one's project and clients. */
   onNewFromProject: (id: string) => void;
   onPatch: (id: string, patch: Partial<Card>) => void;
 }
 
-export default function SortableCard({ card, lane, dimmed, onOpen, onNewFromProject, onPatch }: SortableProps) {
+export default function SortableCard({ card, lane, dimmed, locked, onOpen, onNewFromProject, onPatch }: SortableProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
     data: { type: 'card', lane },
+    disabled: locked,
   });
   const [menu, setMenu] = useState<MenuPos | null>(null);
 
@@ -220,7 +224,7 @@ export default function SortableCard({ card, lane, dimmed, onOpen, onNewFromProj
       }}
       onContextMenu={(event) => {
         event.preventDefault();
-        setMenu({ x: event.clientX, y: event.clientY });
+        if (!locked) setMenu({ x: event.clientX, y: event.clientY });
       }}
     >
       <CardFace card={card} dimmed={dimmed} />

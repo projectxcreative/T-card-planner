@@ -23,6 +23,8 @@ interface Props {
   settings: Settings;
   /** True when a calendar is connected, so the gutter can explain itself. */
   calendarReady: boolean;
+  /** The server can't be reached: adding, moving and resizing cards is paused. */
+  locked?: boolean;
   onOpen: (id: string) => void;
   onPatch: (id: string, patch: Partial<Card>) => void;
   onQuickAdd: (lane: LaneId, title: string) => void;
@@ -78,7 +80,7 @@ function packed<T extends Span>(items: T[]): { item: T; column: number; columns:
 }
 
 export default function DayView(props: Props) {
-  const { day, cards, events, settings, calendarReady, onOpen, onPatch, onQuickAdd } = props;
+  const { day, cards, events, settings, calendarReady, locked, onOpen, onPatch, onQuickAdd } = props;
   const categories = useCategories();
   const gridRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -151,6 +153,7 @@ export default function DayView(props: Props) {
   }, [cards, drag, from, minutesAt, onPatch, to]);
 
   const begin = (event: React.PointerEvent, card: Card, mode: Mode) => {
+    if (locked) return;
     // Left button only, and never from the keyboard-focus path.
     if (event.button !== 0) return;
     event.preventDefault();
@@ -204,6 +207,7 @@ export default function DayView(props: Props) {
             className="lane-add-input"
             value={draft}
             placeholder="Add a card to this day"
+            disabled={locked}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key !== 'Enter') return;
@@ -363,7 +367,13 @@ export default function DayView(props: Props) {
                     {card.estimate > 0 ? ` · ${formatEstimate(card.estimate)}` : ''}
                   </span>
                 </button>
-                <button type="button" className="ghost" onClick={() => schedule(card)} title="Give this card a time">
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={locked}
+                  onClick={() => schedule(card)}
+                  title={locked ? "Can't reach the server, so scheduling is paused" : 'Give this card a time'}
+                >
                   Schedule
                 </button>
               </div>

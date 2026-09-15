@@ -27,10 +27,12 @@ interface Props {
   /** Jump to the Projects view with this project open. */
   onOpenProject: (id: string) => void;
   onMoveCard: (id: string, lane: LaneId) => void;
+  /** The server can't be reached: creating, editing and deleting are paused. */
+  locked?: boolean;
 }
 
 export default function ClientsView(props: Props) {
-  const { clients, totals, projectsOf, cardsOf, selected, onSelect, onCreate, onPatch, onDelete, onOpenCard, onOpenProject, onMoveCard } = props;
+  const { clients, totals, projectsOf, cardsOf, selected, onSelect, onCreate, onPatch, onDelete, onOpenCard, onOpenProject, onMoveCard, locked } = props;
   const [draft, setDraft] = useState('');
 
   const active = selected ? clients.find((client) => client.id === selected) ?? null : null;
@@ -62,6 +64,7 @@ export default function ClientsView(props: Props) {
             value={draft}
             placeholder="New client, then Enter"
             maxLength={CLIENT_NAME_MAX}
+            disabled={locked}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
@@ -108,7 +111,7 @@ export default function ClientsView(props: Props) {
           </div>
         ) : (
           <>
-            <header className="split-detail-head">
+            <header className="split-detail-head" inert={locked || undefined}>
               <input
                 type="color"
                 className="cat-colour"
@@ -210,6 +213,7 @@ export default function ClientsView(props: Props) {
                         type="date"
                         className="split-card-day"
                         value={lane === BACKLOG ? '' : lane}
+                        disabled={locked}
                         title={lane === BACKLOG ? 'In the backlog' : 'The day this card sits on'}
                         onChange={(event) => onMoveCard(card.id, event.target.value || BACKLOG)}
                       />

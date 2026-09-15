@@ -37,6 +37,9 @@ interface Props {
   /** Every card that isn't already on this project, unattached ones first. */
   attachable: (projectId: string) => { card: Card; lane: LaneId }[];
   onAttachCard: (cardId: string, projectId: string) => void;
+  /** The server can't be reached: creating, editing and deleting are paused,
+   *  but picking a project from the list to look at still works. */
+  locked?: boolean;
 }
 
 /** The money box is typed into, so it can't be driven straight off the number:
@@ -337,7 +340,7 @@ function AttachCard({
 }
 
 export default function ProjectsView(props: Props) {
-  const { projects, cardsOf, selected, onSelect, onCreate, onPatch, onDelete, onOpenCard, onAddCard, onMoveCard, attachable, onAttachCard } = props;
+  const { projects, cardsOf, selected, onSelect, onCreate, onPatch, onDelete, onOpenCard, onAddCard, onMoveCard, attachable, onAttachCard, locked } = props;
   const categories = useCategories();
   const { clients, clientOrder } = useLookups();
   const [newTitle, setNewTitle] = useState('');
@@ -428,6 +431,7 @@ export default function ProjectsView(props: Props) {
             className="lane-add-input"
             value={newTitle}
             placeholder="New project, then Enter"
+            disabled={locked}
             onChange={(event) => setNewTitle(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
@@ -492,7 +496,7 @@ export default function ProjectsView(props: Props) {
           </div>
         ) : (
           <>
-            <header className="split-detail-head">
+            <header className="split-detail-head" inert={locked || undefined}>
               <input
                 className="drawer-title"
                 value={active.title}
@@ -523,7 +527,7 @@ export default function ProjectsView(props: Props) {
               </div>
             </header>
 
-            <div className="split-detail-body">
+            <div className="split-detail-body" inert={locked || undefined}>
               {stats && <ProjectStats project={active} stats={stats} />}
 
               <div className="field-row">

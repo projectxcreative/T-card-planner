@@ -24,6 +24,8 @@ export interface LaneProps {
   isBacklog?: boolean;
   /** Hours per day at which the load bar reads as over-committed. */
   capacity: number;
+  /** The server can't be reached: adding and dragging cards is paused. */
+  locked?: boolean;
   /** What is already in the calendar for this day. Empty on the backlog, and
    *  whenever no calendar is connected. */
   events?: CalendarEvent[];
@@ -38,7 +40,7 @@ export interface LaneProps {
 }
 
 export default function Lane(props: LaneProps) {
-  const { id, title, subtitle, cards, matches, isToday, isPast, isWeekend, isBacklog, capacity, events = [], onOpen, onQuickAdd, onOpenDay, onNewFromProject, onPatch } = props;
+  const { id, title, subtitle, cards, matches, isToday, isPast, isWeekend, isBacklog, capacity, locked, events = [], onOpen, onQuickAdd, onOpenDay, onNewFromProject, onPatch } = props;
   const { setNodeRef, isOver } = useDroppable({ id: `lane:${id}`, data: { type: 'lane', lane: id } });
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
@@ -47,6 +49,12 @@ export default function Lane(props: LaneProps) {
   useEffect(() => {
     if (adding) inputRef.current?.focus();
   }, [adding]);
+
+  // A lock that lands mid-type closes the box rather than leaving a draft
+  // that Enter can no longer commit.
+  useEffect(() => {
+    if (locked) setAdding(false);
+  }, [locked]);
 
   const commit = (keepOpen: boolean) => {
     const value = draft.trim();
@@ -143,6 +151,7 @@ export default function Lane(props: LaneProps) {
                 card={card}
                 lane={id}
                 dimmed={matches ? !matches.has(card.id) : false}
+                locked={locked}
                 onOpen={onOpen}
                 onNewFromProject={onNewFromProject}
                 onPatch={onPatch}
@@ -173,7 +182,13 @@ export default function Lane(props: LaneProps) {
             }}
           />
         ) : (
-          <button type="button" className="lane-add" onClick={() => setAdding(true)}>
+          <button
+            type="button"
+            className="lane-add"
+            disabled={locked}
+            title={locked ? "Can't reach the server, so adding cards is paused" : undefined}
+            onClick={() => setAdding(true)}
+          >
             + Add card
           </button>
         )}

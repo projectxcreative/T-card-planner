@@ -23,6 +23,8 @@ interface Props {
   /** Twelve months either side of this one, plus "not yet". */
   onMonth: (projectId: string, month: string | null) => void;
   onOpenProject: (id: string) => void;
+  /** The server can't be reached: moving a project to another month is paused. */
+  locked?: boolean;
 }
 
 const CHOICES = monthChoices(12, 12);
@@ -75,7 +77,7 @@ function MonthDrop({ month, children }: { month: BillingMonth; children: React.R
  * work finished, because those are routinely different months and only the
  * first one is a question anybody asks.
  */
-export default function BillingView({ months, clients, onMonth, onOpenProject }: Props) {
+export default function BillingView({ months, clients, onMonth, onOpenProject, locked }: Props) {
   // Every month, the unassigned group included: work that is delivered and not
   // yet billed is exactly what this number is for, and a job still waiting to be
   // given a month is the most in need of the attention, not the least.
@@ -104,7 +106,7 @@ export default function BillingView({ months, clients, onMonth, onOpenProject }:
 
   return (
     <DndContext
-      sensors={sensors}
+      sensors={locked ? [] : sensors}
       onDragStart={(event: DragStartEvent) => setDragging(find(String(event.active.id)))}
       onDragEnd={onDragEnd}
       onDragCancel={() => setDragging(null)}
@@ -166,6 +168,7 @@ export default function BillingView({ months, clients, onMonth, onOpenProject }:
                   <select
                     className="billing-row-month"
                     value={project.invoiceMonth ?? ''}
+                    disabled={locked}
                     aria-label={`Invoice month for ${project.title || 'this project'}`}
                     onChange={(event) => onMonth(project.id, event.target.value || null)}
                   >
