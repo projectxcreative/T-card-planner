@@ -3,8 +3,9 @@
 A work planner that sits between a T-card board, a calendar and a kanban board.
 Cards carry a title and a rich text description, live in a column per day, and
 move by drag and drop. They can belong to a **project** with a value against it,
-be tagged with the **clients** they're for, and be published to your **Microsoft
-365 calendar**.
+be tagged with the **clients** they're for, and reach your **Microsoft 365
+calendar** — either as a link Outlook subscribes to, or written into it
+directly.
 
 ![The board](docs/board.png)
 
@@ -15,7 +16,7 @@ npm install
 npm run dev          # http://localhost:5173 — board only, no sync
 npm run dev:worker   # http://localhost:8787 — board plus the sync API
 npm run typecheck    # app and Worker
-npm test             # the Access login checks
+npm test             # the Access login and calendar feed checks
 npm run deploy       # build, then wrangler deploy
 ```
 
@@ -264,11 +265,117 @@ view does all of this too, alongside what each client's work adds up to.
 timeline covers, and the theme. Whether the weekend gets columns is a tickbox on
 the board itself.
 
-**Microsoft 365 calendar.** Covered below.
+**Subscribe from your calendar** and **Microsoft 365 calendar.** The two ways
+the board and Outlook meet. Both covered below.
 
 **Backup.** Export writes the whole board — cards, days, categories, projects
 and clients — to a JSON file; import replaces what's there, after asking. Both
 work on a phone, which is where the old toolbar buttons couldn't go.
+
+## Subscribing to the board
+
+The board, published as a calendar your own calendar app fetches. This is the
+one to reach for if what you want is simply *my cards, in Outlook*: the Worker
+serves the whole board at one unguessable address, and Microsoft 365 shows it
+as an extra calendar alongside your own.
+
+Nothing signs in, so **nothing expires** — the reason to prefer it to the
+connection below, which is a browser sign-in and has to be renewed about daily.
+Nothing can write back either, so the calendar you get is read-only wherever it
+lands. The board stays the original; the calendar is a view of it.
+
+It needs the Worker: a board living only in this browser has nowhere to publish
+from. Set syncing up first.
+
+### Turning it on
+
+**Settings → Calendar → Subscribe from your calendar → Create a calendar
+link.** Copy the link, then:
+
+- **Outlook on the web, and the new Outlook:** Calendar → **Add calendar** →
+  **Subscribe from web** → paste → name it and pick a colour → **Import**.
+- **Outlook for Windows (classic):** Account Settings → **Internet Calendars**
+  → **New** → paste.
+- **Apple Calendar:** File → **New Calendar Subscription**. **Google
+  Calendar:** Other calendars → **From URL**. Both take the same link.
+
+Most desktop clients also take the `webcal://` form shown under the link, which
+opens the calendar app instead of the browser.
+
+**It refreshes on the client's schedule, not the board's.** Microsoft re-reads
+a subscribed calendar every few hours and there is nothing this end can do to
+hurry it: the feed asks for hourly and Outlook treats that as a suggestion. If
+you need something to appear in Outlook *now*, that is what publishing a card
+does, below.
+
+### What lands in it
+
+- **Every card that sits on a day.** The backlog has no day, so it is not in
+  the feed.
+- A card **with a time** becomes an entry at that time, running for its size —
+  an hour if it hasn't been given one.
+- A card **with no time** becomes an **all-day item**, because "sometime on
+  Thursday" is what it says. Inventing a 9am would be a claim the board never
+  made.
+- **Finished cards show as free** rather than busy, and blocked ones as
+  tentative, so the feed never blocks your diary out with work already done.
+- The entry's body carries the card's status, size, logged time, project,
+  client and description, and a link back to the board.
+
+The rest of the panel adjusts it: what the calendar calls itself, every
+scheduled card or only the ones ticked to publish, whether finished cards are
+included, how far back it reaches, and a reminder. Changes take effect on the
+next fetch — the link doesn't change, so nothing needs resubscribing.
+
+Times go out in the timezone of the device that made the link, named under the
+options. Moved somewhere else for good? **Replace the link** from a device in
+the new zone.
+
+### The link is the password
+
+A calendar client has no way to log in to anything, so the link itself is the
+credential: anyone holding it can read every card on the board — titles,
+descriptions, clients, the lot. It is 32 random bytes and will not be guessed,
+but it will be leaked if you treat it as an address. So:
+
+- Paste it into your own calendar, not into a shared document or a ticket.
+- **Replace the link** mints a new one and kills the old one in the same
+  breath. That is the only revocation a URL-shaped secret has, so use it the
+  moment you think one has wandered — and repoint your own calendars at the
+  new one.
+- **Turn it off** removes the feed altogether. Subscribed calendars empty out
+  on their next fetch.
+
+A retired or mistyped link gets a flat 404, exactly like one that never
+existed: there is nothing to log in *with*, so saying "wrong token" would only
+confirm to whoever is guessing that there is something to guess at.
+
+The link is kept on the Worker rather than on the board, so it is not in the
+board blob every device syncs, and not in the JSON that **Export** writes.
+
+### Behind Cloudflare Access
+
+If you have set the login up — and you should — Access challenges every request
+at the edge, including the one Outlook makes. Outlook cannot log in, so it gets
+an HTML login page where it expected a calendar, and the subscription fails with
+nothing useful said. **The feed needs a path Access lets through.**
+
+In the [Zero Trust dashboard](https://one.dash.cloudflare.com), under **Access →
+Applications**, add a *second* self-hosted application:
+
+1. Path: `your.board/calendar/*` — the feed, and nothing else.
+2. One policy: action **Bypass**, include **Everyone**.
+3. Save.
+
+Access matches the most specific path first, so the board itself stays behind
+the login and only `/calendar/*` is open. "Open" means open to whoever holds the
+link: the Worker still checks the token in the path, refuses everything else on
+that prefix with a 404, and `/api/*` and the app stay exactly as locked as they
+were. It is the same trade every calendar feed makes — a long secret in a URL,
+because the protocol has nowhere else to put one.
+
+Without Access, and with only a `BOARD_TOKEN`, there is nothing to do: the token
+never guarded the app itself, and the feed carries its own.
 
 ## The Microsoft 365 calendar
 
@@ -281,6 +388,13 @@ The sign-in happens in the browser using the authorization-code flow with
 **PKCE**. There is no client secret anywhere, and nothing about it reaches the
 Worker — the tokens live on the device that earned them, next to the board. Each
 device connects itself.
+
+That is also its one real cost: **the connection asks to be made again about
+once a day**. See *What to expect from Microsoft* below. If what you want is
+your cards showing up in Outlook and nothing more, subscribe to the board
+instead — that half never expires, and this half is worth connecting only for
+what a feed cannot do: seeing your existing meetings on the board, and pushing
+a change to Outlook the moment you make it.
 
 ### Connecting it
 
@@ -344,8 +458,18 @@ it is the only way through.
 
 ### What to expect from Microsoft
 
-Two things are worth knowing before you promise anyone a one-click connection:
+Three things are worth knowing before you promise anyone a one-click
+connection:
 
+- **The connection lasts about a day, and then wants making again.** Microsoft
+  caps the refresh token it issues a single-page app at 24 hours and there is no
+  way to extend it from the browser, so eventually the badge says the connection
+  has expired and **Connect Microsoft 365** has to be pressed again. It is the
+  identity platform's rule for public clients rather than a setting on the app
+  registration, and nothing in this repo can lift it: renewing it silently would
+  need a confidential client — a server holding a secret and refreshing on your
+  behalf — which is a different and much heavier design than a board that keeps
+  your tokens on your own device. The feed above is the way round it.
 - **Some tenants don't let users consent to apps.** Where an admin has turned
   user consent off, the first person to connect is told to ask an administrator,
   who approves the app once for everybody. No approach avoids this — it is the
@@ -378,6 +502,13 @@ backup does the same for everything the old board had published.
 
 Only scheduled cards can be published, because an entry needs a day. The box
 says so rather than just greying out.
+
+The same tick also decides what a feed set to *Only cards ticked to publish*
+carries, so a card can be kept off Outlook by both routes at once, with one box.
+Running both at the same time will show a published card **twice** — once as the
+entry this wrote, once from the subscribed calendar — so pick one route per
+card, or set the feed to published-only and leave the tick off for everything
+you would rather it carried.
 
 ## Keyboard
 
@@ -538,6 +669,10 @@ survive until the next deploy quietly removed them, at which point the Worker
 sees no Access configured and falls back to the token, putting the app itself
 back in the open with nothing to say so. As secrets they outlive deploys, which
 is the only reason to make them secrets.
+
+**If you publish a calendar feed**, it needs a Bypass policy of its own on
+`/calendar/*` once this is on — Access challenges Outlook otherwise, and Outlook
+has no way to log in. Three clicks, under *Subscribing to the board* above.
 
 With the login in place the token is only useful to things that aren't a
 browser — a backup script, a `wrangler dev` run. Keep it for those, or drop it:

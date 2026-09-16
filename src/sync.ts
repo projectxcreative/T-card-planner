@@ -77,6 +77,19 @@ function readToken(): string {
   }
 }
 
+/**
+ * What to put on a call to the Worker.
+ *
+ * The Access login rides along as a cookie and needs nothing here; the shared
+ * token is only sent when there is one, so a signed-in browser needn't hold a
+ * secret at all. Exported because the board is not the only thing the app asks
+ * the Worker for — the calendar feed is set up through the same door.
+ */
+export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = readToken();
+  return token ? { authorization: `Bearer ${token}`, ...extra } : { ...extra };
+}
+
 export interface Sync {
   status: SyncStatus;
   hasToken: boolean;
@@ -142,13 +155,9 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
     if (patch.lastSyncedAt !== undefined) setLastSyncedAt(patch.lastSyncedAt);
   }, []);
 
-  const headers = useCallback(
-    (extra: Record<string, string> = {}) =>
-      // The Access login rides along as a cookie; the token is only sent when
-      // there is one, so a signed-in browser needn't hold a secret at all.
-      (token ? { authorization: `Bearer ${token}`, ...extra } : { ...extra }),
-    [token],
-  );
+  // `token` is not read here — `authHeaders` takes it from the same store it
+  // was written to — but a change to it does have to rebuild these callbacks.
+  const headers = useCallback((extra: Record<string, string> = {}) => authHeaders(extra), [token]);
 
   /** Maps the Worker's refusals onto a status, or null if the call was fine. */
   const failureStatus = useCallback(async (response: Response): Promise<SyncStatus | null> => {
