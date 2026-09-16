@@ -42,8 +42,11 @@ import {
   laneOf,
   load,
   newCard,
+  newCardUpdate,
+  newCategory,
   newClient,
   newProject,
+  newUpdateCategory,
   normalise,
   reducer,
   sameArrangement,
@@ -51,19 +54,21 @@ import {
 } from './store';
 import {
   BACKLOG,
-  CATEGORY_IDS,
+  CATEGORY_PALETTE,
   CLIENT_PALETTE,
   DEFAULT_SETTINGS,
   STATUS_LABELS,
   categoryLabel,
   type BoardState,
   type Card,
+  type CardUpdate,
   type Category,
   type CategoryId,
   type Client,
   type LaneId,
   type Project,
   type Settings,
+  type UpdateCategory,
   type ViewMode,
 } from './types';
 import { CategoriesProvider, useCategoryColours } from './categories';
@@ -258,8 +263,16 @@ export default function App() {
   }, [filterMatches, searchMatches]);
 
   const categoryCounts = useMemo(() => {
-    const counts = Object.fromEntries(CATEGORY_IDS.map((id) => [id, 0])) as Record<CategoryId, number>;
+    const counts: Record<CategoryId, number> = {};
     for (const card of Object.values(board.cards)) counts[card.colour] = (counts[card.colour] ?? 0) + 1;
+    return counts;
+  }, [board.cards]);
+
+  const updateCategoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const card of Object.values(board.cards)) {
+      for (const update of card.updates) counts[update.categoryId] = (counts[update.categoryId] ?? 0) + 1;
+    }
     return counts;
   }, [board.cards]);
 
@@ -275,6 +288,14 @@ export default function App() {
   const clientList = useMemo(
     () => board.clientOrder.map((id) => board.clients[id]).filter(Boolean) as Client[],
     [board.clientOrder, board.clients],
+  );
+
+  // What Settings has chosen may since have been deleted — falls back to
+  // whatever now sits first, the same way a card that lost its own category
+  // does, rather than handing out an id nothing recognises.
+  const defaultCategoryId = useMemo(
+    () => (board.categories[settings.defaultCategory] ? settings.defaultCategory : board.categoryOrder[0]),
+    [board.categories, board.categoryOrder, settings.defaultCategory],
   );
 
   // Pipeline order, so the list reads as a funnel and the stage headings drawn
@@ -302,9 +323,20 @@ export default function App() {
       clients: board.clients,
       projects: board.projects,
       clientOrder: board.clientOrder,
+      categoryOrder: board.categoryOrder,
+      updateCategories: board.updateCategories,
+      updateCategoryOrder: board.updateCategoryOrder,
       showDescription: settings.showDescription,
     }),
-    [board.clients, board.projects, board.clientOrder, settings.showDescription],
+    [
+      board.clients,
+      board.projects,
+      board.clientOrder,
+      board.categoryOrder,
+      board.updateCategories,
+      board.updateCategoryOrder,
+      settings.showDescription,
+    ],
   );
 
   /* ---------- the calendar ---------- */
@@ -351,19 +383,19 @@ export default function App() {
 
   const quickAdd = useCallback(
     (lane: LaneId, title: string) => {
-      const card = newCard(title, { colour: settings.defaultCategory });
+      const card = newCard(title, { colour: defaultCategoryId });
       dispatch({ type: 'add', lane, card });
     },
-    [settings.defaultCategory],
+    [defaultCategoryId],
   );
 
   const addAndOpen = useCallback(
     (lane: LaneId) => {
-      const card = newCard('', { colour: settings.defaultCategory });
+      const card = newCard('', { colour: defaultCategoryId });
       dispatch({ type: 'add', lane, card });
       setOpenId(card.id);
     },
-    [settings.defaultCategory],
+    [defaultCategoryId],
   );
 
   /** From a card's right-click menu: the next card for the same work, without
@@ -391,21 +423,88 @@ export default function App() {
     [],
   );
 
+  const addCategory = useCallback(
+    (label: string) => {
+      const colour = CATEGORY_PALETTE[board.categoryOrder.length % CATEGORY_PALETTE.length];
+      const { id, category } = newCategory(label, colour);
+      dispatch({ type: 'addCategory', id, category });
+    },
+    [board.categoryOrder.length],
+  );
+
+  const deleteCategory = useCallback(
+    (id: string) => {
+      snapshot();
+      dispatch({ type: 'deleteCategory', id });
+    },
+    [snapshot],
+  );
+
   const resetCategories = useCallback(() => {
     if (!window.confirm('Put every category label and colour back to the defaults?')) return;
     snapshot();
     dispatch({ type: 'resetCategories' });
   }, [snapshot]);
 
+  /* ---------- update categories ---------- */
+
+  const setUpdateCategory = useCallback(
+    (id: string, patch: Partial<UpdateCategory>) => dispatch({ type: 'updateCategory', id, patch }),
+    [],
+  );
+
+  const addUpdateCategory = useCallback(
+    (label: string) => {
+      const colour = CATEGORY_PALETTE[board.updateCategoryOrder.length % CATEGORY_PALETTE.length];
+      const { id, category } = newUpdateCategory(label, colour);
+      dispatch({ type: 'addUpdateCategory', id, category });
+    },
+    [board.updateCategoryOrder.length],
+  );
+
+  const deleteUpdateCategory = useCallback(
+    (id: string) => {
+      snapshot();
+      dispatch({ type: 'deleteUpdateCategory', id });
+    },
+    [snapshot],
+  );
+
+  const resetUpdateCategories = useCallback(() => {
+    if (!window.confirm('Put every update category label and colour back to the defaults?')) return;
+    snapshot();
+    dispatch({ type: 'resetUpdateCategories' });
+  }, [snapshot]);
+
+  /* ---------- logged updates ---------- */
+
+  const addUpdate = useCallback(
+    (cardId: string, categoryId: string, minutes: number, note: string) => {
+      dispatch({ type: 'addUpdate', cardId, update: newCardUpdate(categoryId, minutes, note) });
+    },
+    [],
+  );
+
+  const patchUpdate = useCallback(
+    (cardId: string, updateId: string, patch: Partial<CardUpdate>) =>
+      dispatch({ type: 'patchUpdate', cardId, updateId, patch }),
+    [],
+  );
+
+  const deleteUpdate = useCallback(
+    (cardId: string, updateId: string) => dispatch({ type: 'deleteUpdate', cardId, updateId }),
+    [],
+  );
+
   /* ---------- projects and clients ---------- */
 
   const createProject = useCallback(
     (title: string) => {
-      const project = newProject(title, { colour: settings.defaultCategory });
+      const project = newProject(title, { colour: defaultCategoryId });
       dispatch({ type: 'addProject', project });
       setOpenProject(project.id);
     },
-    [settings.defaultCategory],
+    [defaultCategoryId],
   );
 
   const patchProject = useCallback(
@@ -428,14 +527,14 @@ export default function App() {
       const project = board.projects[projectId];
       const card = newCard(title, {
         projectId,
-        colour: project?.colour ?? settings.defaultCategory,
+        colour: project?.colour ?? defaultCategoryId,
         // A card can still wear several clients; it just starts with its
         // project's one, which is the answer nearly every time.
         clients: project?.clientId ? [project.clientId] : [],
       });
       dispatch({ type: 'add', lane: day, card });
     },
-    [board.projects, settings.defaultCategory],
+    [board.projects, defaultCategoryId],
   );
 
   const addClient = useCallback(
@@ -841,6 +940,9 @@ export default function App() {
                 dispatch({ type: 'delete', id });
                 setOpenId(null);
               }}
+              onAddUpdate={addUpdate}
+              onPatchUpdate={patchUpdate}
+              onDeleteUpdate={deleteUpdate}
               onClose={() => setOpenId(null)}
             />
           )}
@@ -848,9 +950,19 @@ export default function App() {
           {showSettings && (
             <SettingsDialog
               categories={board.categories}
+              categoryOrder={board.categoryOrder}
               counts={categoryCounts}
               onCategory={setCategory}
+              onAddCategory={addCategory}
+              onDeleteCategory={deleteCategory}
               onResetCategories={resetCategories}
+              updateCategories={board.updateCategories}
+              updateCategoryOrder={board.updateCategoryOrder}
+              updateCounts={updateCategoryCounts}
+              onUpdateCategory={setUpdateCategory}
+              onAddUpdateCategory={addUpdateCategory}
+              onDeleteUpdateCategory={deleteUpdateCategory}
+              onResetUpdateCategories={resetUpdateCategories}
               clients={clientList}
               clientCounts={clientCounts}
               onAddClient={addClient}
@@ -858,6 +970,7 @@ export default function App() {
               onDeleteClient={deleteClient}
               locked={locked}
               settings={settings}
+              defaultCategory={defaultCategoryId}
               onSettings={(patch) => setSettings((current) => ({ ...current, ...patch }))}
               m365={m365}
               onExport={exportBoard}

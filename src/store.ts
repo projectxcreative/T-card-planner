@@ -1,18 +1,27 @@
 import {
   BACKLOG,
-  CATEGORY_IDS,
   CLIENT_NAME_MAX,
   CLIENT_PALETTE,
+  CATEGORY_PALETTE,
   DEFAULT_CATEGORIES,
+  DEFAULT_CATEGORY_ORDER,
+  DEFAULT_UPDATE_CATEGORIES,
+  DEFAULT_UPDATE_CATEGORY_ORDER,
   EXPENSE_LABEL_MAX,
   LABEL_MAX,
+  MIN_CATEGORIES,
+  MIN_UPDATE_CATEGORIES,
+  UPDATE_CATEGORY_LABEL_MAX,
+  UPDATE_NOTE_MAX,
   BILLING_BUCKETS,
   PROJECT_STAGES,
   billingBucket,
   isLost,
   defaultCategories,
+  defaultUpdateCategories,
   type BoardState,
   type Card,
+  type CardUpdate,
   type Categories,
   type Category,
   type CategoryId,
@@ -23,6 +32,8 @@ import {
   type Project,
   type ProjectStage,
   type Status,
+  type UpdateCategories,
+  type UpdateCategory,
 } from './types';
 import { isHexColour } from './colour';
 import { addDays, thisMonthKey, todayKey } from './dates';
@@ -40,6 +51,9 @@ export function emptyBoard(): BoardState {
     cards: {},
     lanes: {},
     categories: defaultCategories(),
+    categoryOrder: [...DEFAULT_CATEGORY_ORDER],
+    updateCategories: defaultUpdateCategories(),
+    updateCategoryOrder: [...DEFAULT_UPDATE_CATEGORY_ORDER],
     projects: {},
     clients: {},
     clientOrder: [],
@@ -62,10 +76,23 @@ export function newCard(title: string, patch: Partial<Card> = {}): Card {
     publish: false,
     eventId: null,
     completedAt: null,
+    updates: [],
     createdAt: now,
     updatedAt: now,
     ...patch,
   };
+}
+
+export function newCategory(label: string, colour: string): { id: string; category: Category } {
+  return { id: uid(), category: { label, colour } };
+}
+
+export function newUpdateCategory(label: string, colour: string): { id: string; category: UpdateCategory } {
+  return { id: uid(), category: { label, colour } };
+}
+
+export function newCardUpdate(categoryId: string, minutes: number, note = ''): CardUpdate {
+  return { id: uid(), categoryId, minutes, note: note.slice(0, UPDATE_NOTE_MAX), createdAt: new Date().toISOString() };
 }
 
 export function newProject(title: string, patch: Partial<Project> = {}): Project {
@@ -98,7 +125,16 @@ export type Action =
   | { type: 'duplicate'; id: string }
   | { type: 'move'; id: string; lane: LaneId; index?: number }
   | { type: 'category'; id: CategoryId; patch: Partial<Category> }
+  | { type: 'addCategory'; id: string; category: Category }
+  | { type: 'deleteCategory'; id: string }
   | { type: 'resetCategories' }
+  | { type: 'updateCategory'; id: string; patch: Partial<UpdateCategory> }
+  | { type: 'addUpdateCategory'; id: string; category: UpdateCategory }
+  | { type: 'deleteUpdateCategory'; id: string }
+  | { type: 'resetUpdateCategories' }
+  | { type: 'addUpdate'; cardId: string; update: CardUpdate }
+  | { type: 'patchUpdate'; cardId: string; updateId: string; patch: Partial<CardUpdate> }
+  | { type: 'deleteUpdate'; cardId: string; updateId: string }
   | { type: 'addProject'; project: Project }
   | { type: 'updateProject'; id: string; patch: Partial<Project> }
   | { type: 'deleteProject'; id: string }
@@ -414,8 +450,122 @@ export function reducer(state: BoardState, action: Action): BoardState {
       };
     }
 
-    case 'resetCategories':
-      return { ...state, categories: defaultCategories() };
+    case 'addCategory':
+      if (state.categories[action.id]) return state;
+      return {
+        ...state,
+        categories: { ...state.categories, [action.id]: action.category },
+        categoryOrder: [...state.categoryOrder, action.id],
+      };
+
+    case 'deleteCategory': {
+      if (!state.categories[action.id] || state.categoryOrder.length <= MIN_CATEGORIES) return state;
+      const categories = { ...state.categories };
+      delete categories[action.id];
+      const categoryOrder = state.categoryOrder.filter((x) => x !== action.id);
+      // Every card and project wearing the removed category moves to
+      // whatever now sits first, rather than being left pointing at nothing.
+      const fallback = categoryOrder[0];
+      const cards: Record<string, Card> = {};
+      for (const [id, card] of Object.entries(state.cards)) {
+        cards[id] = card.colour === action.id ? { ...card, colour: fallback } : card;
+      }
+      const projects: Record<string, Project> = {};
+      for (const [id, project] of Object.entries(state.projects)) {
+        projects[id] = project.colour === action.id ? { ...project, colour: fallback } : project;
+      }
+      return { ...state, categories, categoryOrder, cards, projects };
+    }
+
+    case 'resetCategories': {
+      const categories = { ...state.categories };
+      const categoryOrder = [...state.categoryOrder];
+      for (const id of DEFAULT_CATEGORY_ORDER) {
+        categories[id] = { ...DEFAULT_CATEGORIES[id] };
+        if (!categoryOrder.includes(id)) categoryOrder.push(id);
+      }
+      return { ...state, categories, categoryOrder };
+    }
+
+    case 'updateCategory': {
+      const current = state.updateCategories[action.id];
+      if (!current) return state;
+      return {
+        ...state,
+        updateCategories: { ...state.updateCategories, [action.id]: { ...current, ...action.patch } },
+      };
+    }
+
+    case 'addUpdateCategory':
+      if (state.updateCategories[action.id]) return state;
+      return {
+        ...state,
+        updateCategories: { ...state.updateCategories, [action.id]: action.category },
+        updateCategoryOrder: [...state.updateCategoryOrder, action.id],
+      };
+
+    case 'deleteUpdateCategory': {
+      if (!state.updateCategories[action.id] || state.updateCategoryOrder.length <= MIN_UPDATE_CATEGORIES) return state;
+      const updateCategories = { ...state.updateCategories };
+      delete updateCategories[action.id];
+      const updateCategoryOrder = state.updateCategoryOrder.filter((x) => x !== action.id);
+      const fallback = updateCategoryOrder[0];
+      const cards: Record<string, Card> = {};
+      for (const [id, card] of Object.entries(state.cards)) {
+        if (!card.updates.some((update) => update.categoryId === action.id)) continue;
+        cards[id] = {
+          ...card,
+          updates: card.updates.map((update) =>
+            update.categoryId === action.id ? { ...update, categoryId: fallback } : update,
+          ),
+        };
+      }
+      return {
+        ...state,
+        updateCategories,
+        updateCategoryOrder,
+        cards: Object.keys(cards).length ? { ...state.cards, ...cards } : state.cards,
+      };
+    }
+
+    case 'resetUpdateCategories': {
+      const updateCategories = { ...state.updateCategories };
+      const updateCategoryOrder = [...state.updateCategoryOrder];
+      for (const id of DEFAULT_UPDATE_CATEGORY_ORDER) {
+        updateCategories[id] = { ...DEFAULT_UPDATE_CATEGORIES[id] };
+        if (!updateCategoryOrder.includes(id)) updateCategoryOrder.push(id);
+      }
+      return { ...state, updateCategories, updateCategoryOrder };
+    }
+
+    case 'addUpdate': {
+      const card = state.cards[action.cardId];
+      if (!card) return state;
+      const updated: Card = { ...card, updates: [...card.updates, action.update], updatedAt: new Date().toISOString() };
+      return { ...state, cards: { ...state.cards, [action.cardId]: updated } };
+    }
+
+    case 'patchUpdate': {
+      const card = state.cards[action.cardId];
+      if (!card || !card.updates.some((u) => u.id === action.updateId)) return state;
+      const updated: Card = {
+        ...card,
+        updates: card.updates.map((u) => (u.id === action.updateId ? { ...u, ...action.patch } : u)),
+        updatedAt: new Date().toISOString(),
+      };
+      return { ...state, cards: { ...state.cards, [action.cardId]: updated } };
+    }
+
+    case 'deleteUpdate': {
+      const card = state.cards[action.cardId];
+      if (!card || !card.updates.some((u) => u.id === action.updateId)) return state;
+      const updated: Card = {
+        ...card,
+        updates: card.updates.filter((u) => u.id !== action.updateId),
+        updatedAt: new Date().toISOString(),
+      };
+      return { ...state, cards: { ...state.cards, [action.cardId]: updated } };
+    }
 
     case 'addProject':
       return { ...state, projects: { ...state.projects, [action.project.id]: action.project } };
@@ -502,20 +652,75 @@ function isCard(value: unknown): value is Card {
   return !!c && typeof c.id === 'string' && typeof c.title === 'string';
 }
 
-/** Categories are eight fixed slots, so a board written by an older version —
- *  or edited by hand — is filled in from the defaults rather than rejected. */
+/** Categories used to be eight fixed slots; a board can now carry any
+ *  number, so anything shaped like one is kept, filled in from its built-in
+ *  defaults where it has one. A board with nothing recognisable at all —
+ *  hand-edited into emptiness, or written before categories existed — gets
+ *  the factory set back, since a card with nowhere to put its colour isn't
+ *  something the rest of normalise can route around. */
 function normaliseCategories(input: unknown): Categories {
-  const raw = (input ?? {}) as Partial<Record<CategoryId, Partial<Category>>>;
-  const categories = {} as Categories;
-  for (const id of CATEGORY_IDS) {
-    const value = typeof raw[id] === 'object' && raw[id] ? raw[id] : {};
+  const raw = (input ?? {}) as Record<string, Partial<Category>>;
+  const categories: Categories = {};
+  for (const [id, value] of Object.entries(raw)) {
+    if (!value || typeof value !== 'object') continue;
     const label = typeof value.label === 'string' ? value.label.trim().slice(0, LABEL_MAX) : '';
     categories[id] = {
-      label: label || DEFAULT_CATEGORIES[id].label,
-      colour: isHexColour(value.colour) ? value.colour.toLowerCase() : DEFAULT_CATEGORIES[id].colour,
+      label: label || DEFAULT_CATEGORIES[id]?.label || 'Category',
+      colour: isHexColour(value.colour) ? value.colour.toLowerCase() : DEFAULT_CATEGORIES[id]?.colour ?? CATEGORY_PALETTE[0],
     };
   }
-  return categories;
+  return Object.keys(categories).length > 0 ? categories : defaultCategories();
+}
+
+function normaliseCategoryOrder(order: unknown, categories: Categories): string[] {
+  const listed = Array.isArray(order) ? (order as unknown[]).filter((id): id is string => typeof id === 'string' && !!categories[id]) : [];
+  const seen = new Set(listed);
+  return [...listed, ...Object.keys(categories).filter((id) => !seen.has(id))];
+}
+
+/** Same shape as categories, one level down: a starting set that fills in
+ *  from its own defaults, never left empty. */
+function normaliseUpdateCategories(input: unknown): UpdateCategories {
+  const raw = (input ?? {}) as Record<string, Partial<UpdateCategory>>;
+  const categories: UpdateCategories = {};
+  for (const [id, value] of Object.entries(raw)) {
+    if (!value || typeof value !== 'object') continue;
+    const label = typeof value.label === 'string' ? value.label.trim().slice(0, UPDATE_CATEGORY_LABEL_MAX) : '';
+    categories[id] = {
+      label: label || DEFAULT_UPDATE_CATEGORIES[id]?.label || 'Category',
+      colour: isHexColour(value.colour) ? value.colour.toLowerCase() : DEFAULT_UPDATE_CATEGORIES[id]?.colour ?? CATEGORY_PALETTE[0],
+    };
+  }
+  return Object.keys(categories).length > 0 ? categories : defaultUpdateCategories();
+}
+
+function normaliseUpdateCategoryOrder(order: unknown, categories: UpdateCategories): string[] {
+  const listed = Array.isArray(order) ? (order as unknown[]).filter((id): id is string => typeof id === 'string' && !!categories[id]) : [];
+  const seen = new Set(listed);
+  return [...listed, ...Object.keys(categories).filter((id) => !seen.has(id))];
+}
+
+/** Updates logged before the feature existed simply arrive without any; a
+ *  hand-edited or malformed one is dropped rather than sinking the card. An
+ *  update naming a category that no longer exists falls back to whatever is
+ *  first now, the same way a card's own category does. */
+function normaliseCardUpdates(input: unknown, updateCategories: UpdateCategories, order: string[]): CardUpdate[] {
+  if (!Array.isArray(input)) return [];
+  const updates: CardUpdate[] = [];
+  for (const value of input as Partial<CardUpdate>[]) {
+    if (!value || typeof value !== 'object') continue;
+    const minutes = Number.isFinite(value.minutes) ? Math.max(0, Number(value.minutes)) : 0;
+    const categoryId = typeof value.categoryId === 'string' && updateCategories[value.categoryId] ? value.categoryId : order[0];
+    if (!categoryId) continue;
+    updates.push({
+      id: typeof value.id === 'string' && value.id ? value.id : uid(),
+      categoryId,
+      minutes,
+      note: typeof value.note === 'string' ? value.note.slice(0, UPDATE_NOTE_MAX) : '',
+      createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date().toISOString(),
+    });
+  }
+  return updates;
 }
 
 function normaliseClients(input: unknown, order: unknown): Pick<BoardState, 'clients' | 'clientOrder'> {
@@ -572,7 +777,12 @@ function normaliseExpenses(input: unknown): Expense[] {
   return expenses;
 }
 
-function normaliseProjects(input: unknown, clients: Record<string, Client>): Record<string, Project> {
+function normaliseProjects(
+  input: unknown,
+  clients: Record<string, Client>,
+  categories: Categories,
+  categoryOrder: string[],
+): Record<string, Project> {
   const raw = (input ?? {}) as Record<string, Partial<Project>>;
   const projects: Record<string, Project> = {};
   for (const [id, value] of Object.entries(raw)) {
@@ -587,7 +797,7 @@ function normaliseProjects(input: unknown, clients: Record<string, Client>): Rec
       stage: PROJECT_STAGES.includes(value.stage as ProjectStage) ? (value.stage as ProjectStage) : 'active',
       invoiceMonth: typeof value.invoiceMonth === 'string' && /^\d{4}-\d{2}$/.test(value.invoiceMonth) ? value.invoiceMonth : null,
       clientId: oneClient(value, clients),
-      colour: CATEGORY_IDS.includes(value.colour as CategoryId) ? (value.colour as CategoryId) : 'blue',
+      colour: typeof value.colour === 'string' && categories[value.colour] ? value.colour : categoryOrder[0],
       expenses: normaliseExpenses(value.expenses),
       archived: value.archived === true,
       createdAt: value.createdAt ?? now,
@@ -613,7 +823,11 @@ export function normalise(input: unknown): BoardState {
   if (!raw || typeof raw !== 'object') return emptyBoard();
 
   const { clients, clientOrder } = normaliseClients(raw.clients, raw.clientOrder);
-  const projects = normaliseProjects(raw.projects, clients);
+  const categories = normaliseCategories(raw.categories);
+  const categoryOrder = normaliseCategoryOrder(raw.categoryOrder, categories);
+  const updateCategories = normaliseUpdateCategories(raw.updateCategories);
+  const updateCategoryOrder = normaliseUpdateCategoryOrder(raw.updateCategoryOrder, updateCategories);
+  const projects = normaliseProjects(raw.projects, clients, categories, categoryOrder);
 
   const cards: Record<string, Card> = {};
   for (const [id, value] of Object.entries(raw.cards ?? {})) {
@@ -621,7 +835,7 @@ export function normalise(input: unknown): BoardState {
     cards[id] = {
       ...value,
       description: typeof value.description === 'string' ? value.description : '',
-      colour: CATEGORY_IDS.includes(value.colour as CategoryId) ? (value.colour as CategoryId) : 'slate',
+      colour: typeof value.colour === 'string' && categories[value.colour] ? value.colour : categoryOrder[0],
       status: (value.status ?? 'todo') as Status,
       estimate: Number.isFinite(value.estimate) ? Number(value.estimate) : 0,
       start: normaliseStart(value.start),
@@ -630,6 +844,7 @@ export function normalise(input: unknown): BoardState {
       publish: value.publish === true,
       eventId: typeof value.eventId === 'string' ? value.eventId : null,
       completedAt: typeof value.completedAt === 'string' ? value.completedAt : null,
+      updates: normaliseCardUpdates((value as Partial<Card>).updates, updateCategories, updateCategoryOrder),
       createdAt: value.createdAt ?? new Date().toISOString(),
       updatedAt: value.updatedAt ?? new Date().toISOString(),
     };
@@ -659,7 +874,10 @@ export function normalise(input: unknown): BoardState {
     version: VERSION,
     cards,
     lanes,
-    categories: normaliseCategories(raw.categories),
+    categories,
+    categoryOrder,
+    updateCategories,
+    updateCategoryOrder,
     projects,
     clients,
     clientOrder,
@@ -740,6 +958,9 @@ function seedBoard(): BoardState {
   return {
     version: VERSION,
     categories: defaultCategories(),
+    categoryOrder: [...DEFAULT_CATEGORY_ORDER],
+    updateCategories: defaultUpdateCategories(),
+    updateCategoryOrder: [...DEFAULT_UPDATE_CATEGORY_ORDER],
     projects: { [project.id]: project },
     clients: { [client.id]: client },
     clientOrder: [client.id],

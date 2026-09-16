@@ -9,10 +9,11 @@ export const STATUS_LABELS: Record<Status, string> = {
 };
 
 /** T-card boards run on colour coding — each colour is a category of work.
- *  The ids are fixed so a card keeps its category across renames; the label
- *  and the colour behind it are both yours to change in Settings. */
-export const CATEGORY_IDS = ['slate', 'blue', 'teal', 'green', 'amber', 'red', 'purple', 'pink'] as const;
-export type CategoryId = (typeof CATEGORY_IDS)[number];
+ *  You start with eight, and can add or remove your own from Settings — a
+ *  card keeps the category id it was given, so a rename or a recolour
+ *  reaches every card at once, and only removing the category itself moves
+ *  a card off it. */
+export type CategoryId = string;
 
 export interface Category {
   label: string;
@@ -20,12 +21,21 @@ export interface Category {
   colour: string;
 }
 
-export type Categories = Record<CategoryId, Category>;
+export type Categories = Record<string, Category>;
+
+/** The built-in ids, in the order a fresh board lists them. Fixed, unlike a
+ *  category you add yourself, so a board written before categories were
+ *  addable still lines up with what "Reset all" puts back. */
+export const DEFAULT_CATEGORY_ORDER = ['slate', 'blue', 'teal', 'green', 'amber', 'red', 'purple', 'pink'];
+
+/** A board always keeps at least one — a card with no category at all would
+ *  have nothing to draw its strip in. */
+export const MIN_CATEGORIES = 1;
 
 /** The eight defaults are lifted off the logo's own gradient — teal through
  *  blue and violet on one arm, lime through amber and red to magenta on the
  *  other — so a board full of colour still looks like it belongs to the mark
- *  in the corner. Any of them can be changed in Settings. */
+ *  in the corner. Any of them can be changed or removed in Settings. */
 export const DEFAULT_CATEGORIES: Categories = {
   slate: { label: 'General', colour: '#64748b' },
   blue: { label: 'Client work', colour: '#2179c8' },
@@ -40,15 +50,26 @@ export const DEFAULT_CATEGORIES: Categories = {
 /** Long enough for "Client work — retainers", short enough to fit the strip. */
 export const LABEL_MAX = 28;
 
+/** The colours a new category is offered, cycling once every hue is used —
+ *  the same set a new client picks from, so the two lists don't clash if
+ *  you're looking at them side by side. */
+export const CATEGORY_PALETTE = [
+  '#2179c8', '#0f8f8a', '#6f9c22', '#c68512',
+  '#d84630', '#7b4a9e', '#b81f6a', '#64748b',
+];
+
 export function defaultCategories(): Categories {
   return Object.fromEntries(
-    CATEGORY_IDS.map((id) => [id, { ...DEFAULT_CATEGORIES[id] }]),
-  ) as Categories;
+    DEFAULT_CATEGORY_ORDER.map((id) => [id, { ...DEFAULT_CATEGORIES[id] }]),
+  );
 }
 
-/** The label to show when someone has cleared the box but not yet typed. */
+/** The label to show when someone has cleared the box, or a card is wearing
+ *  a category that has since been removed. */
 export function categoryLabel(categories: Categories, id: CategoryId): string {
-  return categories[id]?.label.trim() || DEFAULT_CATEGORIES[id].label;
+  const category = categories[id];
+  if (!category) return 'Category';
+  return category.label.trim() || DEFAULT_CATEGORIES[id]?.label || 'Category';
 }
 
 /* ---------- clients ---------- */
@@ -296,7 +317,74 @@ export const DEFAULT_SETTINGS: Settings = {
   m365: { tenant: 'common', clientId: '' },
 };
 
+/* ---------- update categories ---------- */
+
+/** The kind of work an update logs — video editing, capture, travel, account
+ *  management and so on. Same shape as a card's own category, and managed the
+ *  same way in Settings, but a separate list: what a card *is* and what was
+ *  actually *done* on it are different questions, and a card only ever wears
+ *  one of the former while collecting as many of the latter as it needs. */
+export interface UpdateCategory {
+  label: string;
+  /** `#rrggbb`, used for the update's chip. */
+  colour: string;
+}
+
+export type UpdateCategories = Record<string, UpdateCategory>;
+
+export const UPDATE_CATEGORY_LABEL_MAX = 32;
+
+/** A board always keeps at least one, for the same reason a card always
+ *  keeps at least one category: an update with nothing to file it under
+ *  isn't a choice, it's a gap. */
+export const MIN_UPDATE_CATEGORIES = 1;
+
+/** A starting set covering the kinds of work a small studio actually logs
+ *  time against — entirely yours to add to, rename or remove in Settings. */
+export const DEFAULT_UPDATE_CATEGORIES: UpdateCategories = {
+  capture: { label: 'Video capture', colour: '#2179c8' },
+  editing: { label: 'Video editing', colour: '#7b4a9e' },
+  photo: { label: 'Photo editing', colour: '#0f8f8a' },
+  travel: { label: 'Travel', colour: '#c68512' },
+  admin: { label: 'Account management', colour: '#6f9c22' },
+};
+
+export const DEFAULT_UPDATE_CATEGORY_ORDER = ['capture', 'editing', 'photo', 'travel', 'admin'];
+
+export function defaultUpdateCategories(): UpdateCategories {
+  return Object.fromEntries(
+    DEFAULT_UPDATE_CATEGORY_ORDER.map((id) => [id, { ...DEFAULT_UPDATE_CATEGORIES[id] }]),
+  );
+}
+
+export function updateCategoryLabel(categories: UpdateCategories, id: string): string {
+  const category = categories[id];
+  if (!category) return 'Uncategorised';
+  return category.label.trim() || DEFAULT_UPDATE_CATEGORIES[id]?.label || 'Uncategorised';
+}
+
 /* ---------- cards ---------- */
+
+/** A discrete piece of logged work on a card — what kind it was, and how long
+ *  it took. Several can sit on one card: a shoot's capture, its edit and its
+ *  export logged separately rather than folded into one estimate. */
+export interface CardUpdate {
+  id: string;
+  /** What kind of work this was — an `UpdateCategory` id. */
+  categoryId: string;
+  /** Minutes spent. */
+  minutes: number;
+  /** What was actually done, in a line. */
+  note: string;
+  createdAt: string;
+}
+
+export const UPDATE_NOTE_MAX = 140;
+
+/** Minutes logged on a card, across every update on it. */
+export function totalUpdateMinutes(updates: CardUpdate[]): number {
+  return updates.reduce((sum, update) => sum + update.minutes, 0);
+}
 
 export interface Card {
   id: string;
@@ -321,6 +409,9 @@ export interface Card {
   /** When the card was last marked done — what the day's "logged" total and
    *  the look-back are counted from. */
   completedAt: string | null;
+  /** Discrete logged work — what was done, and how long it took, kept apart
+   *  from the card's own rough estimate. */
+  updates: CardUpdate[];
   createdAt: string;
   updatedAt: string;
 }
@@ -338,6 +429,12 @@ export interface BoardState {
   /** Category labels and colours, kept with the board so every device that
    *  syncs it reads the same colour code. */
   categories: Categories;
+  /** Category ids in the order they should be listed. */
+  categoryOrder: string[];
+  /** The categories an update can be logged as, kept with the board for the
+   *  same reason as a card's own categories. */
+  updateCategories: UpdateCategories;
+  updateCategoryOrder: string[];
   /** Projects and clients travel with the board for the same reason. */
   projects: Record<string, Project>;
   clients: Record<string, Client>;
