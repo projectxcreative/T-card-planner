@@ -94,6 +94,7 @@ import { summarise } from './cardText';
 import { useSync } from './sync';
 import { useAppUpdate } from './updates';
 import { effectiveConfig, useM365, usePublishing } from './m365';
+import { useCalendarFeed } from './feed';
 import { ConflictBar, OfflineBar } from './components/SyncBadge';
 
 const SETTINGS_KEY = 'tcard-planner.settings.v1';
@@ -345,6 +346,11 @@ export default function App() {
   // build ships with — so a plain visitor has nothing to set up.
   const m365Config = useMemo(() => effectiveConfig(settings.m365), [settings.m365]);
   const m365 = useM365(m365Config);
+  // The other direction: the board published as a calendar Outlook subscribes
+  // to. It lives on the Worker, so it needs a device that can reach it — and it
+  // is only ever looked at from Settings, so it is only read when that is open
+  // rather than costing every load a call nobody asked for.
+  const feed = useCalendarFeed((sync.signedIn || sync.hasToken) && showSettings);
   const calendarReady = m365.status === 'connected';
 
   // Whichever view is up decides the stretch of calendar worth holding.
@@ -973,6 +979,7 @@ export default function App() {
               defaultCategory={defaultCategoryId}
               onSettings={(patch) => setSettings((current) => ({ ...current, ...patch }))}
               m365={m365}
+              feed={feed}
               onExport={exportBoard}
               onImport={importBoard}
               onClose={() => setShowSettings(false)}

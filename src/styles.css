@@ -1693,6 +1693,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .settings-picker { width: 170px; }
 .settings-picker .picker-select { width: 100%; padding-left: 27px; }
 .settings-wide { width: 210px; flex: none; }
+
+/* The subscription link, which is long, and the button that copies it. A
+   monospaced, smaller face so the whole token is visible in the width there
+   is — it is read to check it, not read to understand it. */
+.feed-link { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.feed-link input {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--t-meta);
+  color: var(--text-dim);
+}
+.feed-link .ghost { flex: none; }
 .cat-remove { flex: none; padding: 2px 7px; }
 
 /* The card window: the same body, in a taller frame than Settings uses. */

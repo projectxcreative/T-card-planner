@@ -11,9 +11,21 @@
  * board is only served to someone your Access policy let through. A shared
  * `BOARD_TOKEN` remains for callers that are not a browser — a backup script,
  * or a `wrangler dev` run with no Access in front of it.
+ *
+ * `/calendar/<token>.ics` is the one door neither of those guards, because the
+ * thing knocking is a calendar client that cannot log in to anything: the token
+ * in the path is its whole credential. See `calendar.ts`, and the Access bypass
+ * the README asks you to add for it.
  */
 
 import { emailAllowed, teamHost, verifyAccess, type AccessIdentity, type AccessResult } from './access';
+import {
+  DEFAULT_FEED_OPTIONS,
+  isValidTimeZone,
+  normaliseOptions,
+  renderCalendar,
+  type FeedOptions,
+} from './calendar';
 
 export interface Env {
   BOARD: KVNamespace;
@@ -35,6 +47,25 @@ interface StoredBoard {
   updatedAt: string;
   board: unknown;
 }
+
+/**
+ * The calendar feed, if one has been made.
+ *
+ * The token *is* the credential — a calendar client cannot log in to anything —
+ * so it lives here rather than on the board blob: the board is handed to every
+ * device that syncs and exported by the backup button, and a subscription link
+ * that leaks into a JSON file in someone's downloads folder is a link you have
+ * to remember to rotate.
+ */
+interface StoredFeed {
+  token: string;
+  createdAt: string;
+  options: FeedOptions;
+}
+
+/** `/calendar/<token>.ics`. A path, not a query string, so one Access bypass
+ *  rule on `/calendar/*` covers the feed and nothing else. */
+const FEED_PATH = /^\/calendar\/([A-Za-z0-9_-]{16,128})\.ics$/;
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -122,6 +153,123 @@ async function readBoard(env: Env): Promise<StoredBoard | null> {
   return env.BOARD.get<StoredBoard>(env.BOARD_KEY || 'board', 'json');
 }
 
+const boardKey = (env: Env) => env.BOARD_KEY || 'board';
+const feedKey = (env: Env) => `${boardKey(env)}:feed`;
+
+async function readFeed(env: Env): Promise<StoredFeed | null> {
+  const stored = await env.BOARD.get<StoredFeed>(feedKey(env), 'json');
+  if (!stored || typeof stored.token !== 'string' || !stored.token) return null;
+  return {
+    token: stored.token,
+    createdAt: typeof stored.createdAt === 'string' ? stored.createdAt : '',
+    // Options written before a later version added a field still read cleanly.
+    options: normaliseOptions(stored.options),
+  };
+}
+
+/** 32 random bytes, url-safe. Guessing one is not a thing that happens. */
+function mintToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+const feedUrl = (origin: string, token: string) => `${origin}/calendar/${token}.ics`;
+
+/** What the settings panel needs to draw the panel, link and all. */
+function feedReply(feed: StoredFeed | null, origin: string) {
+  return {
+    enabled: Boolean(feed),
+    url: feed ? feedUrl(origin, feed.token) : null,
+    createdAt: feed?.createdAt ?? null,
+    options: feed?.options ?? DEFAULT_FEED_OPTIONS,
+  };
+}
+
+/**
+ * Creates, adjusts, rotates or removes the feed.
+ *
+ * Rotating mints a new token and drops the old one in the same write, so the
+ * link someone was given stops working the moment you replace it — which is the
+ * only revocation a URL-shaped credential can have.
+ */
+async function handleFeedApi(request: Request, env: Env, origin: string): Promise<Response> {
+  const held = await readFeed(env);
+
+  if (request.method === 'GET') return json(feedReply(held, origin));
+
+  if (request.method === 'DELETE') {
+    await env.BOARD.delete(feedKey(env));
+    return json(feedReply(null, origin));
+  }
+
+  if (request.method !== 'POST') return json({ error: 'method-not-allowed' }, 405, { allow: 'GET, POST, DELETE' });
+
+  let payload: { rotate?: boolean } & Partial<FeedOptions>;
+  try {
+    payload = (await request.json()) as typeof payload;
+  } catch {
+    return json({ error: 'bad-json' }, 400);
+  }
+
+  // A timezone the Worker cannot resolve would silently render every entry in
+  // UTC, which looks like the board losing an hour rather than a bad setting.
+  const zone = typeof payload?.timeZone === 'string' ? payload.timeZone.trim() : '';
+  if (zone && !isValidTimeZone(zone)) return json({ error: 'bad-timezone' }, 400);
+
+  const next: StoredFeed = {
+    token: held && !payload?.rotate ? held.token : mintToken(),
+    createdAt: held && !payload?.rotate ? held.createdAt : new Date().toISOString(),
+    options: normaliseOptions(payload, held?.options ?? DEFAULT_FEED_OPTIONS),
+  };
+  await env.BOARD.put(feedKey(env), JSON.stringify(next));
+  return json(feedReply(next, origin));
+}
+
+/**
+ * Serves the feed itself, to a calendar client carrying no login at all.
+ *
+ * A wrong token is a 404 rather than a 401: there is nothing to log in *with*,
+ * and saying "wrong token" to an address that is only ever guessed at confirms
+ * that a feed exists to guess at.
+ */
+async function handleFeed(request: Request, env: Env, token: string, origin: string): Promise<Response> {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return json({ error: 'method-not-allowed' }, 405, { allow: 'GET, HEAD' });
+  }
+
+  const feed = await readFeed(env);
+  if (!feed || !secretsMatch(token, feed.token)) return new Response('Not found', { status: 404 });
+
+  const stored = await readBoard(env);
+  const body = renderCalendar(stored?.board ?? {}, feed.options, { origin });
+  const headers = {
+    'content-type': 'text/calendar; charset=utf-8',
+    'content-disposition': `inline; filename="${boardKey(env)}.ics"`,
+    // Revalidate rather than re-download: a board that hasn't moved since the
+    // client last looked is one 304, however often Outlook decides to poll.
+    'cache-control': 'no-cache, private',
+    etag: `W/"${stored?.rev ?? 0}-${feed.createdAt}-${hash(JSON.stringify(feed.options))}"`,
+  };
+
+  if (request.headers.get('if-none-match') === headers.etag) {
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(request.method === 'HEAD' ? null : body, { headers });
+}
+
+/** Enough to tell one set of options from another in an ETag. */
+function hash(value: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
 async function handleApi(
   request: Request,
   env: Env,
@@ -149,6 +297,12 @@ async function handleApi(
       tokenRequired: !access?.ok && Boolean(env.BOARD_TOKEN),
       configured: Boolean(env.BOARD_TOKEN) || accessConfigured(env),
     });
+  }
+
+  if (path === '/api/calendar') {
+    const allowed = authorise(request, env, access);
+    if (allowed instanceof Response) return allowed;
+    return handleFeedApi(request, env, new URL(request.url).origin);
   }
 
   if (path !== '/api/board') return json({ error: 'not-found' }, 404);
@@ -231,7 +385,25 @@ function deniedPage(reason: 'missing' | 'expired' | 'invalid'): Response {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const path = new URL(request.url).pathname;
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    // The calendar feed, before anything else. A calendar client has no login
+    // to offer and no way to be asked for one: the unguessable token in the
+    // path is the whole of its credential, checked in `handleFeed`. Running the
+    // Access check here would only cost a round trip to refuse it — and with
+    // Access in front of the Worker the same is true at the edge, which is why
+    // `/calendar/*` needs a Bypass policy of its own. See the README.
+    //
+    // The whole prefix is the feed's, not only the links that parse: a
+    // truncated or mistyped one is a 404, rather than the app's own HTML handed
+    // to a calendar client that asked for a calendar.
+    if (path.startsWith('/calendar/')) {
+      const feedMatch = FEED_PATH.exec(path);
+      return feedMatch
+        ? handleFeed(request, env, feedMatch[1], url.origin)
+        : new Response('Not found', { status: 404 });
+    }
 
     // Cloudflare handles /cdn-cgi/access/* at the edge, so this only runs if
     // the request somehow got past it. Sending sign-out on to the team domain

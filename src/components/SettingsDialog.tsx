@@ -16,6 +16,7 @@ import {
   type UpdateCategory,
 } from '../types';
 import { hasBuiltInApp, redirectUri, type M365 } from '../m365';
+import { webcalOf, type CalendarFeed } from '../feed';
 
 interface Props {
   categories: Categories;
@@ -53,6 +54,8 @@ interface Props {
   defaultCategory: CategoryId;
   onSettings: (patch: Partial<Settings>) => void;
   m365: M365;
+  /** The board published as a calendar, for Outlook to subscribe to. */
+  feed: CalendarFeed;
   onExport: () => void;
   onImport: (file: File) => void;
   onClose: () => void;
@@ -73,7 +76,7 @@ export default function SettingsDialog(props: Props) {
     categories, categoryOrder, counts, onCategory, onAddCategory, onDeleteCategory, onResetCategories,
     updateCategories, updateCategoryOrder, updateCounts, onUpdateCategory, onAddUpdateCategory, onDeleteUpdateCategory, onResetUpdateCategories,
     clients, clientCounts, onAddClient, onClient, onDeleteClient, locked,
-    settings, defaultCategory, onSettings, m365, onExport, onImport, onClose,
+    settings, defaultCategory, onSettings, m365, feed, onExport, onImport, onClose,
   } = props;
   const fileRef = useRef<HTMLInputElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -571,6 +574,8 @@ export default function SettingsDialog(props: Props) {
             </label>
           </section>
 
+          <CalendarFeedPanel feed={feed} />
+
           <section className="settings-section">
             <h3 className="settings-title">Microsoft 365 calendar</h3>
             <p className="settings-note">
@@ -579,6 +584,13 @@ export default function SettingsDialog(props: Props) {
               {hasBuiltInApp
                 ? 'Connect and Microsoft will ask you to sign in and approve the two permissions it needs — reading your profile, and reading and writing your calendar.'
                 : 'This build ships without an app registration, so you will need to point it at one of your own below.'}
+            </p>
+            <p className="settings-note">
+              Worth knowing: Microsoft only issues a browser app a sign-in that lasts a day or so, and it cannot
+              be extended from here — so this connection asks to be made again about that often. That is the
+              price of signing in as you, and it buys the half a feed can't do: seeing your existing meetings on
+              the board. If all you want is the cards showing up in Outlook, subscribe to the link above instead
+              and there is nothing left to expire.
             </p>
 
             <div className="settings-row">
@@ -693,5 +705,250 @@ export default function SettingsDialog(props: Props) {
         </div>
       </section>
     </div>
+  );
+}
+
+/** How far back the feed reaches, as the handful of answers anyone gives. */
+const PAST_CHOICES: { value: string; label: string }[] = [
+  { value: '30', label: 'The last month' },
+  { value: '90', label: 'The last three months' },
+  { value: '365', label: 'The last year' },
+  { value: 'all', label: 'Everything on the board' },
+];
+
+const ALARM_CHOICES: { value: string; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: '0', label: 'At the start' },
+  { value: '5', label: '5 minutes before' },
+  { value: '15', label: '15 minutes before' },
+  { value: '30', label: '30 minutes before' },
+  { value: '60', label: 'An hour before' },
+];
+
+const FEED_NAME_MAX = 60;
+
+/**
+ * The board published as a calendar, and the link that subscribes to it.
+ *
+ * Its own component because it holds state the rest of the dialog has no use
+ * for — a draft of the name, and whether the link was just copied.
+ */
+function CalendarFeedPanel({ feed }: { feed: CalendarFeed }) {
+  const { options, url } = feed.feed;
+  const [copied, setCopied] = useState(false);
+  const [name, setName] = useState(options.name);
+  const linkRef = useRef<HTMLInputElement>(null);
+
+  // The name is sent when you leave the box rather than per keystroke, so the
+  // field follows the feed only when the feed changes under it.
+  useEffect(() => setName(options.name), [options.name]);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  // Whoever is deciding whether to replace a link wants to know how old it is.
+  const made = feed.feed.createdAt
+    ? new Date(feed.feed.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
+    : '';
+
+  const commitName = () => {
+    const next = name.trim().slice(0, FEED_NAME_MAX);
+    if (!next) {
+      setName(options.name);
+      return;
+    }
+    if (next !== options.name) feed.update({ name: next });
+  };
+
+  const copy = () => {
+    if (!url) return;
+    void navigator.clipboard
+      ?.writeText(url)
+      .then(() => setCopied(true))
+      // No clipboard permission — selecting it leaves the usual copy to hand.
+      .catch(() => linkRef.current?.select());
+  };
+
+  return (
+    <section className="settings-section">
+      <h3 className="settings-title">Subscribe from your calendar</h3>
+      <p className="settings-note">
+        Publishes the board at one address your calendar app can fetch. In Microsoft 365, that's{' '}
+        <strong>Add calendar → Subscribe from web</strong>; Outlook then keeps it beside your own entries and
+        re-reads it on its own schedule. Nothing signs in, so nothing expires — and nothing can write back, so
+        the calendar you get is read-only. The board stays the original.
+      </p>
+
+      {feed.status === 'unavailable' && (
+        <p className="settings-note">
+          This one needs the board's own server: a board that only lives in this browser has nowhere to publish
+          from. Set syncing up first — the badge in the toolbar does it.
+        </p>
+      )}
+
+      {feed.status === 'loading' && <p className="settings-note">Asking the server…</p>}
+
+      {feed.status === 'ready' && !feed.feed.enabled && (
+        <div className="settings-actions">
+          <button type="button" className="ghost accent" disabled={feed.busy} onClick={feed.create}>
+            {feed.busy ? 'Making a link…' : 'Create a calendar link'}
+          </button>
+        </div>
+      )}
+
+      {feed.status === 'ready' && feed.feed.enabled && url && (
+        <>
+          <div className="feed-link">
+            <input
+              ref={linkRef}
+              type="text"
+              className="cat-label"
+              value={url}
+              readOnly
+              spellCheck={false}
+              aria-label="Calendar subscription link"
+              onFocus={(event) => event.target.select()}
+            />
+            <button type="button" className="ghost accent" onClick={copy}>
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <p className="settings-note">
+            Treat it like a password: anyone who has the link can read every card on the board, without logging
+            in to anything. A desktop calendar will usually take it as <code>{webcalOf(url)}</code> instead, which
+            opens the app rather than the browser.
+            {made && ` Made ${made}.`}
+          </p>
+
+          <label className="settings-row">
+            <span>
+              What it's called
+              <span className="settings-hint">The name the calendar suggests for itself</span>
+            </span>
+            <input
+              type="text"
+              className="cat-label settings-wide"
+              value={name}
+              maxLength={FEED_NAME_MAX}
+              onChange={(event) => setName(event.target.value)}
+              onBlur={commitName}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+              }}
+            />
+          </label>
+
+          <label className="settings-row">
+            <span>
+              What goes in it
+              <span className="settings-hint">Every card with a day, or only the ticked ones</span>
+            </span>
+            <select
+              value={options.scope}
+              onChange={(event) => feed.update({ scope: event.target.value as 'all' | 'published' })}
+            >
+              <option value="all">Every scheduled card</option>
+              <option value="published">Only cards ticked to publish</option>
+            </select>
+          </label>
+
+          <label className="settings-row">
+            <span>
+              Include finished cards
+              <span className="settings-hint">Shown as free time rather than busy</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={options.includeDone}
+              onChange={(event) => feed.update({ includeDone: event.target.checked })}
+            />
+          </label>
+
+          <label className="settings-row">
+            <span>
+              How far back
+              <span className="settings-hint">Older days drop out rather than piling up</span>
+            </span>
+            <select
+              value={options.pastDays === null ? 'all' : String(options.pastDays)}
+              onChange={(event) =>
+                feed.update({ pastDays: event.target.value === 'all' ? null : Number(event.target.value) })
+              }
+            >
+              {PAST_CHOICES.map((choice) => (
+                <option key={choice.value} value={choice.value}>
+                  {choice.label}
+                </option>
+              ))}
+              {/* Whatever was set before these choices existed still shows. */}
+              {options.pastDays !== null && !PAST_CHOICES.some((c) => c.value === String(options.pastDays)) && (
+                <option value={String(options.pastDays)}>{`The last ${options.pastDays} days`}</option>
+              )}
+            </select>
+          </label>
+
+          <label className="settings-row">
+            <span>
+              Reminder
+              <span className="settings-hint">Only on work still to do, and only if your app honours it</span>
+            </span>
+            <select
+              value={options.alarmMinutes === null ? 'none' : String(options.alarmMinutes)}
+              onChange={(event) =>
+                feed.update({ alarmMinutes: event.target.value === 'none' ? null : Number(event.target.value) })
+              }
+            >
+              {ALARM_CHOICES.map((choice) => (
+                <option key={choice.value} value={choice.value}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <p className="settings-note">
+            Times go out in <code>{options.timeZone}</code>, from the device that made the link. Cards with no
+            time of their own arrive as all-day items, because “sometime on Thursday” is what they say.
+          </p>
+
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="ghost"
+              disabled={feed.busy}
+              title="Mint a new link and kill this one"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    'Replace the link? The one you have now stops working straight away, and every calendar subscribed to it will have to be pointed at the new one.',
+                  )
+                ) {
+                  feed.rotate();
+                }
+              }}
+            >
+              Replace the link
+            </button>
+            <button
+              type="button"
+              className="ghost danger"
+              disabled={feed.busy}
+              onClick={() => {
+                if (window.confirm('Turn the feed off? The link stops working, and subscribed calendars empty out.')) {
+                  feed.remove();
+                }
+              }}
+            >
+              Turn it off
+            </button>
+          </div>
+        </>
+      )}
+
+      {feed.error && <p className="settings-note is-error">{feed.error}</p>}
+    </section>
   );
 }
