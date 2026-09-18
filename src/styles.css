@@ -1732,40 +1732,233 @@ button, input, select, textarea { font: inherit; color: inherit; }
    screen floats it free on every side, so it needs the rest of the frame. */
 .drawer.is-full { border: 1px solid var(--line); }
 
-/* ---------- projects: a full-width list, the detail in a window ---------- */
+/* ---------- projects: a table you drag rows around in ---------- */
 
 /* The project list used to share the cramped two-column split with Clients;
-   on its own page it gets the room a list of rows actually needs. */
+   on its own page it gets the room a table of figures actually needs. */
 .proj-page { display: flex; flex-direction: column; }
-.split-list.is-full { max-width: 900px; margin-inline: auto; width: 100%; }
+.split-list.is-full { max-width: 1040px; margin-inline: auto; width: 100%; }
 
-.proj-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+/* Group by, and a line saying what the grips are for — the drag is invisible
+   until you know it is there. */
+.proj-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 
-.proj-row {
+.proj-toolbar-label {
+  font-size: var(--t-micro);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.proj-groupby { flex: none; }
+.proj-groupby .seg { flex: none; padding: 4px 14px; }
+.proj-toolbar-note { margin-left: auto; font-size: var(--t-meta); color: var(--text-faint); }
+
+/* One column template for the head, every row and every subtotal, so the
+   figures line up down the whole page rather than group by group — which is
+   the whole of the difference between a table and a stack of cards. */
+.proj-table {
+  --proj-cols: 12px minmax(160px, 1fr) 132px 148px 68px 64px 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.proj-table-head,
+.proj-row,
+.proj-group-foot {
+  display: grid;
+  grid-template-columns: var(--proj-cols);
+  align-items: center;
+  gap: 10px;
+}
+
+.proj-table-head {
+  /* Indented to where a row's own content starts — the group's border, the
+     list's padding, the row's colour strip and its padding — so a heading sits
+     over its column rather than nine pixels to the left of it. */
+  padding: 0 16px 0 19px;
+  font-size: var(--t-micro);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.proj-group {
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
+/* Archived is a group like any other, so it can be dragged into and out of —
+   just a quieter one, since it is work you have stopped counting. */
+.proj-group.is-put-away { opacity: 0.72; }
+.proj-group.is-over { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 8px 30px -14px var(--accent); }
+
+.proj-group-head {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  width: 100%;
-  padding: 10px 14px;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.proj-group-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--chip); }
+
+.proj-group-name {
+  margin: 0;
+  font-size: var(--t-micro);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.proj-group-count { margin-left: auto; font-size: var(--t-micro); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+.proj-rows { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+
+.proj-row {
+  padding: 5px 8px;
   background: var(--surface-2);
   border: 1px solid var(--line-soft);
   border-left: 4px solid var(--c);
-  border-radius: var(--radius);
-  text-align: left;
-  cursor: pointer;
+  border-radius: var(--radius-md);
 }
 
 .proj-row:hover { border-color: var(--line); }
 .proj-row.is-on { background: var(--accent-soft); border-color: var(--accent); }
-.proj-row.is-archived { opacity: 0.6; }
 
-.proj-row-title { flex: 1 1 220px; min-width: 0; font-size: var(--t-item); font-weight: 620; overflow-wrap: anywhere; }
-.proj-row-tags { flex: 0 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.proj-cell { min-width: 0; font-size: var(--t-body); }
 
-.proj-row-figures { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; min-width: 90px; }
-.proj-row-value { font-size: var(--t-item); font-weight: 650; font-variant-numeric: tabular-nums; }
-.proj-row-meta { font-size: var(--t-meta); color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The head and the subtotal keep a cell where the grip goes, so their columns
+   sit under the rows' rather than one notch to the left. */
+.proj-cell.is-grip { width: 12px; }
+
+button.proj-cell.is-title {
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: var(--t-body);
+  font-weight: 620;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button.proj-cell.is-title:hover { text-decoration: underline; }
+
+select.proj-cell {
+  width: 100%;
+  padding: 3px 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: inherit;
+  font-size: var(--t-meta);
+}
+
+/* The client cell wears the client's colour the way its chip does, so the
+   column reads as colour before it reads as names. */
+select.proj-cell.is-client { border-left: 4px solid var(--chip, var(--line)); }
+
+.proj-cell.is-cards,
+.proj-cell.is-hours,
+.proj-cell.is-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.proj-cell.is-cards, .proj-cell.is-hours { font-size: var(--t-meta); color: var(--text-dim); }
+.proj-cell.is-value { font-weight: 650; }
+.proj-of { color: var(--text-faint); }
+
+/* An empty group is kept to a hairline: nine stages, most of them empty most
+   of the time, would otherwise be a page of nothing — but a group you can't
+   see is a group you can't drop into. */
+.proj-drop-hint {
+  padding: 3px 8px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  color: var(--text-faint);
+  font-size: var(--t-micro);
+  text-align: center;
+}
+
+/* What the run comes to, in the columns the run was read in. */
+.proj-group-foot {
+  padding: 6px 10px;
+  border-top: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--text) 4%, var(--surface));
+  border-radius: 0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px);
+  font-size: var(--t-meta);
+}
+
+.proj-group-foot .is-title {
+  color: var(--text-dim);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proj-group-foot .is-value { font-size: var(--t-body); }
+
+/* ---------- dragging a project between groups ---------- */
+
+/* Three dots in a column: enough of a handle to find, quiet enough to ignore.
+   The same one the billing view moves a job between months with. */
+.proj-grip {
+  flex: none;
+  width: 12px;
+  align-self: stretch;
+  min-height: 20px;
+  cursor: grab;
+  opacity: 0.35;
+  background-image: radial-gradient(circle, var(--text-faint) 1px, transparent 1px);
+  background-size: 4px 5px;
+  background-position: center;
+  background-repeat: repeat-y;
+  border-radius: var(--radius-xs);
+  touch-action: none;
+}
+
+.proj-row:hover .proj-grip { opacity: 0.75; }
+.proj-grip:active { cursor: grabbing; }
+.proj-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 1; }
+
+.proj-ghost {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  font-size: var(--t-body);
+  cursor: grabbing;
+}
+
+.proj-ghost strong { font-variant-numeric: tabular-nums; }
+
+/* Narrow enough that seven columns would be seven slivers: the row folds back
+   into a block, with the title over its two dropdowns and the figures last. */
+@media (max-width: 860px) {
+  .proj-table-head { display: none; }
+
+  .proj-row, .proj-group-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .proj-cell.is-grip { display: none; }
+  .proj-row .proj-cell.is-title { flex: 1 1 100%; white-space: normal; }
+  .proj-group-foot .is-title { flex: 1 1 auto; }
+  /* Two dropdowns to a line, then the figures to a line of their own, with the
+     money where it always is: hard against the right edge. */
+  select.proj-cell { flex: 1 1 calc(50% - 5px); width: auto; }
+  .proj-cell.is-cards, .proj-cell.is-hours { flex: none; }
+  .proj-cell.is-value { flex: 1 1 auto; }
+}
 
 /* The detail opens over the list rather than beside it — the same window a
    card opens in, just wider, since a project carries more fields. */
@@ -1815,10 +2008,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .expense-toggle input { margin: 0; }
 
 .expense-money { flex: none; width: 100px; }
-
-@media (max-width: 700px) {
-  .proj-row-figures { align-items: flex-start; }
-}
 
 /* ---------- narrow screens, new views ---------- */
 
@@ -2238,7 +2427,7 @@ button.chip:hover { transform: translateY(-1px); }
 :root[data-skin='draft'] :is(
   .lane-hours, .lane-count, .lane-foot-value, .lane-cal-time,
   .tcard-time, .tcard-est, .money, .slot-time, .monthcell-day, .monthcell-logged,
-  .totals-value, .projstat-value
+  .totals-value, .projstat-value, .proj-num
 ) {
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;

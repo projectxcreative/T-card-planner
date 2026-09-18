@@ -97,8 +97,29 @@ A project is a piece of work several cards belong to: a title, a rich text
 description, a **value in pounds**, a category, a **stage**, and the client it's
 for. One client, not a list — a project belongs to whoever is paying for it.
 
+**The table.** Projects are a table of rows — project, stage, client, cards,
+hours, value — with one set of column headings for the whole page, so the
+figures line up down it rather than group by group. Stage and client are
+dropdowns on the row itself: they're the two fields that actually change while
+you're looking at the list, and changing them there beats opening each project
+to do it.
+
+**Grouping.** *Group by* switches the runs between **Stage** and **Client** —
+the same projects, answering either "what's happening" or "who it's for". Each
+run ends in a **subtotal** in its own columns: what that stage or that client
+comes to in cards, hours and money. Every group is listed whether or not
+anything is in it, because an empty stage is both worth seeing and the only
+place a project can be dragged to before it has company there. Which grouping
+you last used is remembered on the device.
+
+**Dragging.** Each row has a grip at its left edge: drag it onto another
+group's heading to move the project there — a new stage when grouped by stage,
+a new client when grouped by client. **Archived** is a group like any other, so
+dragging a row into it puts the project away and dragging it back out brings it
+back at whatever it was dropped on.
+
 **The pipeline.** Every project sits at a stage, and the list is ordered by
-them, so it reads top to bottom as a funnel with a heading at each step:
+them, so it reads top to bottom as a funnel:
 
 | Stage | Counts as |
 | --- | --- |
@@ -123,9 +144,10 @@ putting one away is saying you've stopped counting it.
   box — it inherits the project's category and its client.
 - Every card on the project is listed with its day, and the day can be changed
   from there without leaving the view.
-- **Archive** takes a finished project out of the card pickers and the totals
-  but keeps it. **Delete** removes the project; its cards stay on the board,
-  just without one.
+- **Archive** takes a finished project out of the card pickers, the totals and
+  every group's subtotal but keeps it — from the project itself, or by dragging
+  its row into the Archived group. **Delete** removes the project; its cards
+  stay on the board, just without one.
 
 Stages are the app's own and fixed, like card statuses — it's the categories and
 clients that are yours to name.

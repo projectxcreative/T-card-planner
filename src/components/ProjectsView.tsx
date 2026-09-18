@@ -1,5 +1,18 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import type { Card, CategoryId, Expense, LaneId, Project, ProjectStage, StageGroup } from '../types';
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import type { Card, CategoryId, Client, Expense, LaneId, Project, ProjectStage, StageGroup } from '../types';
 import {
   BACKLOG,
   EXPENSE_LABEL_MAX,
@@ -513,6 +526,184 @@ function AttachCard({
   );
 }
 
+/* ---------- the project table ---------- */
+
+/**
+ * What the rows are grouped into.
+ *
+ * Stage reads top to bottom as the pipeline; client reads as the book of
+ * business — the same projects, answering either "what is happening" or "who
+ * it is for". Both are a drop target as well as a heading, so a project is
+ * moved on by dragging it rather than by opening it.
+ */
+type GroupBy = 'stage' | 'client';
+
+const GROUP_LABELS: Record<GroupBy, string> = { stage: 'stage', client: 'client' };
+
+/** Two groups that are neither a stage nor a client: work nobody is paying for
+ *  yet, and work you have stopped counting. Archived is a group in both
+ *  groupings, so dragging a row into it puts a project away and dragging it
+ *  back out brings it back — and so an archived project never quietly swells a
+ *  subtotal. */
+const NO_CLIENT = 'none';
+const ARCHIVED = 'archived';
+
+/** Which grouping you last used. Per device, like the other view preferences:
+ *  it is about how you are reading the list, not about the board itself. */
+const GROUP_KEY = 'tcard-planner.projects.groupby';
+
+function readGroupBy(): GroupBy {
+  try {
+    return localStorage.getItem(GROUP_KEY) === 'client' ? 'client' : 'stage';
+  } catch {
+    return 'stage';
+  }
+}
+
+/** What a run of rows adds up to — the figures under each group. */
+interface GroupSums {
+  count: number;
+  value: number;
+  cards: number;
+  done: number;
+  hours: number;
+}
+
+/** A run of the table: its heading, its rows, and what they come to. */
+interface Group {
+  key: string;
+  label: string;
+  /** A client group wears the client's own colour on its heading. */
+  colour?: string;
+  projects: Project[];
+  sums: GroupSums;
+}
+
+/** Droppable ids carry the group so the drop can read it straight back off,
+ *  rather than working it out from whatever it happened to land on. */
+const dropId = (key: string) => `group:${key}`;
+
+function GroupDrop({ group, children }: { group: Group; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: dropId(group.key), data: { group: group.key } });
+  const classes = ['proj-group'];
+  if (group.key === ARCHIVED) classes.push('is-put-away');
+  if (isOver) classes.push('is-over');
+  return (
+    <section ref={setNodeRef} className={classes.join(' ')}>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * One project, as a row of columns.
+ *
+ * Stage and client are dropdowns rather than labels: they are the two fields
+ * that actually change while you are looking at the list, and a list you can
+ * only read is a list you keep opening things from. The drag does the same job
+ * in one gesture; the dropdowns are what it falls back to on a phone, on a
+ * keyboard, and when the row is already where you are looking.
+ */
+function ProjectRow({
+  project,
+  group,
+  stats,
+  clients,
+  clientOrder,
+  selected,
+  locked,
+  onSelect,
+  onPatch,
+}: {
+  project: Project;
+  group: string;
+  stats: Tally;
+  clients: Record<string, Client>;
+  clientOrder: string[];
+  selected: boolean;
+  locked?: boolean;
+  onSelect: Props['onSelect'];
+  onPatch: Props['onPatch'];
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: project.id, data: { group } });
+  const client = project.clientId ? clients[project.clientId] : undefined;
+  const classes = ['proj-row', `c-${project.colour}`];
+  if (selected) classes.push('is-on');
+
+  return (
+    <li ref={setNodeRef} className={classes.join(' ')} style={isDragging ? { opacity: 0.35 } : undefined}>
+      {/* A grip rather than the whole row: the row carries two dropdowns, and a
+          drag that starts on a dropdown is a dropdown that never opens. */}
+      <span
+        {...attributes}
+        {...listeners}
+        className="proj-grip"
+        aria-label={`Move ${project.title || 'this project'} to another group`}
+        title="Drag to another group"
+      />
+
+      <button
+        type="button"
+        className="proj-cell is-title"
+        onClick={() => onSelect(project.id)}
+        title={project.title || 'Untitled project'}
+      >
+        {project.title || 'Untitled project'}
+      </button>
+
+      <select
+        className={`proj-cell is-stage stage-select s-stage-${STAGE_GROUP[project.stage]}`}
+        value={project.stage}
+        disabled={locked}
+        aria-label={`Stage for ${project.title || 'this project'}`}
+        onChange={(event) => onPatch(project.id, { stage: event.target.value as ProjectStage })}
+      >
+        {PROJECT_STAGES.map((stage) => (
+          <option key={stage} value={stage}>
+            {STAGE_LABELS[stage]}
+          </option>
+        ))}
+      </select>
+
+      <select
+        className="proj-cell is-client"
+        style={client ? ({ '--chip': client.colour } as React.CSSProperties) : undefined}
+        value={project.clientId ?? ''}
+        disabled={locked}
+        aria-label={`Client for ${project.title || 'this project'}`}
+        onChange={(event) => onPatch(project.id, { clientId: event.target.value || null })}
+      >
+        <option value="">No client</option>
+        {clientOrder.map((id) => (
+          <option key={id} value={id}>
+            {clients[id].name}
+          </option>
+        ))}
+        {/* A client since removed still has to show its own value, or the row
+            would silently read as unassigned. */}
+        {project.clientId && !client && <option value={project.clientId}>Unknown client</option>}
+      </select>
+
+      <span className="proj-cell is-cards proj-num" title={`${stats.done} of ${stats.cards} cards finished`}>
+        {stats.cards > 0 ? (
+          <>
+            {stats.done}
+            <span className="proj-of">/{stats.cards}</span>
+          </>
+        ) : (
+          '—'
+        )}
+      </span>
+
+      <span className="proj-cell is-hours proj-num" title="Every hour on this project's cards, finished or not">
+        {formatEstimate(stats.hours) || '—'}
+      </span>
+
+      <span className="proj-cell is-value proj-num">{formatMoney(project.value)}</span>
+    </li>
+  );
+}
+
 export default function ProjectsView(props: Props) {
   const { projects, cardsOf, selected, onSelect, onCreate, onPatch, onDelete, onOpenCard, onAddCard, onMoveCard, attachable, onAttachCard, locked } = props;
   const categories = useCategories();
@@ -520,6 +711,22 @@ export default function ProjectsView(props: Props) {
   const [newTitle, setNewTitle] = useState('');
   const [cardTitle, setCardTitle] = useState('');
   const [cardDay, setCardDay] = useState(todayKey());
+  const [groupBy, setGroupBy] = useState<GroupBy>(readGroupBy);
+  const [dragging, setDragging] = useState<Project | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(GROUP_KEY, groupBy);
+    } catch {
+      // A device that won't keep preferences still shows the list.
+    }
+  }, [groupBy]);
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
 
   const active = selected ? projects.find((project) => project.id === selected) ?? null : null;
   const activeClient = active?.clientId ? clients[active.clientId] : undefined;
@@ -564,6 +771,82 @@ export default function ProjectsView(props: Props) {
     }
     return sums;
   }, [projects]);
+
+  /**
+   * The table, in runs.
+   *
+   * Every group is listed whether or not anything is in it: an empty stage is
+   * both a fact worth seeing — nothing quoted this month — and the only place a
+   * project can be dragged to before it has company there.
+   */
+  const groups = useMemo<Group[]>(() => {
+    const heads: { key: string; label: string; colour?: string }[] =
+      groupBy === 'stage'
+        ? PROJECT_STAGES.map((stage) => ({ key: stage, label: STAGE_LABELS[stage] }))
+        : [
+            ...clientOrder.map((id) => ({ key: id, label: clients[id].name, colour: clients[id].colour })),
+            { key: NO_CLIENT, label: 'No client' },
+          ];
+    heads.push({ key: ARCHIVED, label: 'Archived' });
+
+    const rows = new Map<string, Project[]>(heads.map((head) => [head.key, []]));
+    for (const project of projects) {
+      // Archived work is out of the groups proper for the same reason it is out
+      // of the totals above: putting one away is saying you have stopped
+      // counting it. A project on a client that has since been deleted falls
+      // back to "No client" rather than vanishing.
+      const key = project.archived
+        ? ARCHIVED
+        : groupBy === 'stage'
+          ? project.stage
+          : project.clientId && clients[project.clientId]
+            ? project.clientId
+            : NO_CLIENT;
+      rows.get(key)?.push(project);
+    }
+
+    return heads.map((head) => {
+      const own = rows.get(head.key) ?? [];
+      const sums: GroupSums = { count: own.length, value: 0, cards: 0, done: 0, hours: 0 };
+      for (const project of own) {
+        sums.value += project.value;
+        const stats = tallies[project.id];
+        if (!stats) continue;
+        sums.cards += stats.cards;
+        sums.done += stats.done;
+        sums.hours += stats.hours;
+      }
+      return { ...head, projects: own, sums };
+    });
+  }, [projects, groupBy, clients, clientOrder, tallies]);
+
+  /**
+   * A row dropped on another group's heading.
+   *
+   * What the move means is whatever the list is grouped by: the stage in stage
+   * order, the client in client order, and either way a project dragged out of
+   * Archived comes back with it.
+   */
+  const onDragEnd = (event: DragEndEvent) => {
+    setDragging(null);
+    const { active, over } = event;
+    if (!over) return;
+    const to = (over.data.current as { group?: string } | undefined)?.group;
+    const from = (active.data.current as { group?: string } | undefined)?.group;
+    // Dropping a project back where it already was is not an edit.
+    if (!to || to === from) return;
+
+    const id = String(active.id);
+    const project = projects.find((row) => row.id === id);
+    const patch: Partial<Project> =
+      to === ARCHIVED
+        ? { archived: true }
+        : groupBy === 'stage'
+          ? { stage: to as ProjectStage }
+          : { clientId: to === NO_CLIENT ? null : to };
+    if (to !== ARCHIVED && project?.archived) patch.archived = false;
+    onPatch(id, patch);
+  };
 
   const create = () => {
     const title = newTitle.trim();
@@ -616,49 +899,116 @@ export default function ProjectsView(props: Props) {
           />
         </div>
 
-        <ul className="proj-list">
-          {projects.length === 0 && <li className="split-empty">No projects yet.</li>}
-          {projects.map((project, index) => {
-            const own = tallies[project.id] ?? tally(cardsOf(project.id));
-            const client = project.clientId ? clients[project.clientId] : undefined;
-            const classes = ['proj-row', `c-${project.colour}`];
-            if (project.id === selected) classes.push('is-on');
-            if (project.archived) classes.push('is-archived');
-            // The list arrives in pipeline order, so a heading goes wherever the
-            // stage changes — which turns the list into the funnel itself.
-            const previous = projects[index - 1];
-            const heading =
-              !previous || previous.stage !== project.stage || previous.archived !== project.archived
-                ? project.archived
-                  ? 'Archived'
-                  : STAGE_LABELS[project.stage]
-                : null;
-            return (
-              <li key={project.id}>
-                {heading && <p className="split-group">{heading}</p>}
-                <button type="button" className={classes.join(' ')} onClick={() => onSelect(project.id)}>
-                  <span className="proj-row-title">{project.title || 'Untitled project'}</span>
-                  <span className="proj-row-tags">
-                    <span className={`stage s-stage-${STAGE_GROUP[project.stage]}`}>{STAGE_LABELS[project.stage]}</span>
-                    {client && (
-                      <span className="chip is-compact" style={{ '--chip': client.colour } as React.CSSProperties}>
-                        {client.name}
-                      </span>
+        <div className="proj-toolbar">
+          <span className="proj-toolbar-label" id="proj-groupby">Group by</span>
+          <div className="segmented proj-groupby" role="group" aria-labelledby="proj-groupby">
+            {(['stage', 'client'] as GroupBy[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={groupBy === mode ? 'seg is-on' : 'seg'}
+                aria-pressed={groupBy === mode}
+                onClick={() => setGroupBy(mode)}
+              >
+                {mode === 'stage' ? 'Stage' : 'Client'}
+              </button>
+            ))}
+          </div>
+          <span className="proj-toolbar-note">Drag a row by its grip to move it to another {GROUP_LABELS[groupBy]}.</span>
+        </div>
+
+        {projects.length === 0 && <p className="split-empty">No projects yet.</p>}
+
+        {projects.length > 0 && (
+          <DndContext
+            sensors={locked ? [] : sensors}
+            onDragStart={(event: DragStartEvent) =>
+              setDragging(projects.find((project) => project.id === String(event.active.id)) ?? null)
+            }
+            onDragEnd={onDragEnd}
+            onDragCancel={() => setDragging(null)}
+          >
+            <div className="proj-table">
+              {/* One set of column labels for the whole table, not one per
+                  group: the figures line up down the page, which is the point
+                  of a table over a list of cards. */}
+              <div className="proj-table-head" aria-hidden="true">
+                <span className="proj-cell is-grip" />
+                <span className="proj-cell is-title">Project</span>
+                <span className="proj-cell is-stage">Stage</span>
+                <span className="proj-cell is-client">Client</span>
+                <span className="proj-cell is-cards">Cards</span>
+                <span className="proj-cell is-hours">Hours</span>
+                <span className="proj-cell is-value">Value</span>
+              </div>
+
+              {groups.map((group) => (
+                <GroupDrop key={group.key} group={group}>
+                  <header className="proj-group-head">
+                    {group.colour && (
+                      <span className="proj-group-dot" style={{ '--chip': group.colour } as React.CSSProperties} />
                     )}
-                    {project.archived && <span className="chip is-compact">Archived</span>}
-                  </span>
-                  <span className="proj-row-figures">
-                    <span className="proj-row-value">{formatMoney(project.value)}</span>
-                    <span className="proj-row-meta">
-                      {own.cards} card{own.cards === 1 ? '' : 's'}
-                      {own.hours > 0 ? ` · ${formatEstimate(own.hours)}` : ''}
+                    <h3 className="proj-group-name">{group.label}</h3>
+                    <span className="proj-group-count">
+                      {group.sums.count} project{group.sums.count === 1 ? '' : 's'}
                     </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                  </header>
+
+                  <ul className="proj-rows">
+                    {group.sums.count === 0 && <li className="proj-drop-hint">Drop a project here</li>}
+                    {group.projects.map((project) => (
+                      <ProjectRow
+                        key={project.id}
+                        project={project}
+                        group={group.key}
+                        stats={tallies[project.id] ?? tally(cardsOf(project.id))}
+                        clients={clients}
+                        clientOrder={clientOrder}
+                        selected={project.id === selected}
+                        locked={locked}
+                        onSelect={onSelect}
+                        onPatch={onPatch}
+                      />
+                    ))}
+                  </ul>
+
+                  {/* The subtotal sits under its own rows and in their columns,
+                      so what a stage or a client comes to is read straight down
+                      the figures rather than added up by eye. */}
+                  {group.sums.count > 0 && (
+                    <div className="proj-group-foot">
+                      <span className="proj-cell is-grip" />
+                      <span className="proj-cell is-title">{group.label} subtotal</span>
+                      <span className="proj-cell is-stage" />
+                      <span className="proj-cell is-client" />
+                      <span className="proj-cell is-cards proj-num" title={`${group.sums.done} of ${group.sums.cards} cards finished`}>
+                        {group.sums.cards > 0 ? (
+                          <>
+                            {group.sums.done}
+                            <span className="proj-of">/{group.sums.cards}</span>
+                          </>
+                        ) : (
+                          '—'
+                        )}
+                      </span>
+                      <span className="proj-cell is-hours proj-num">{formatEstimate(group.sums.hours) || '—'}</span>
+                      <span className="proj-cell is-value proj-num">{formatMoney(group.sums.value)}</span>
+                    </div>
+                  )}
+                </GroupDrop>
+              ))}
+            </div>
+
+            <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }}>
+              {dragging ? (
+                <span className="proj-ghost">
+                  {dragging.title || 'Untitled project'}
+                  <strong>{formatMoney(dragging.value)}</strong>
+                </span>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )}
       </section>
 
       {active && (
