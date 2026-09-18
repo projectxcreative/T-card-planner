@@ -591,6 +591,21 @@ function signature(card: Card, lane: LaneId): string {
   return [lane, card.start, card.estimate, card.title, card.publish, card.status].join('|');
 }
 
+/**
+ * The description, as an Outlook entry can actually show it.
+ *
+ * Images in a description point at the board's own Worker, which is behind the
+ * same login the board is: Outlook fetching one would be handed a sign-in page,
+ * and would draw a broken image. Since an entry is a copy rather than a window
+ * on the card, the image is replaced by a line saying where it is — the card,
+ * which the entry already links back to.
+ */
+export function publishableHtml(description: string): string {
+  const html = description || '';
+  if (!/<img\b/i.test(html)) return html;
+  return html.replace(/<img\b[^>]*>/gi, '<p><i>[image — see the card]</i></p>');
+}
+
 const DEFAULT_START_MINUTES = 9 * 60;
 const DEFAULT_LENGTH_MINUTES = 60;
 
@@ -683,7 +698,7 @@ export function usePublishing(
           const { start, end } = eventWindow(card);
           const body = {
             subject: card.title || 'Untitled card',
-            body: { contentType: 'HTML', content: card.description || '' },
+            body: { contentType: 'HTML', content: publishableHtml(card.description) },
             start: { dateTime: graphDateTime(lane, start), timeZone: LOCAL_TIMEZONE },
             end: { dateTime: graphDateTime(lane, end), timeZone: LOCAL_TIMEZONE },
             showAs: card.status === 'done' ? 'free' : 'busy',

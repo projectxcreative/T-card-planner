@@ -1,4 +1,5 @@
 import {
+  ATTACHMENT_NAME_MAX,
   BACKLOG,
   CLIENT_NAME_MAX,
   CLIENT_PALETTE,
@@ -8,6 +9,7 @@ import {
   DEFAULT_UPDATE_CATEGORIES,
   DEFAULT_UPDATE_CATEGORY_ORDER,
   EXPENSE_LABEL_MAX,
+  FILE_ID,
   LABEL_MAX,
   MIN_CATEGORIES,
   MIN_UPDATE_CATEGORIES,
@@ -19,6 +21,7 @@ import {
   isLost,
   defaultCategories,
   defaultUpdateCategories,
+  type Attachment,
   type BoardState,
   type Card,
   type CardUpdate,
@@ -77,6 +80,7 @@ export function newCard(title: string, patch: Partial<Card> = {}): Card {
     eventId: null,
     completedAt: null,
     updates: [],
+    attachments: [],
     createdAt: now,
     updatedAt: now,
     ...patch,
@@ -107,6 +111,7 @@ export function newProject(title: string, patch: Partial<Project> = {}): Project
     invoiceMonth: null,
     colour: 'blue',
     expenses: [],
+    attachments: [],
     archived: false,
     createdAt: now,
     updatedAt: now,
@@ -421,6 +426,10 @@ export function reducer(state: BoardState, action: Action): BoardState {
         start: source.start,
         projectId: source.projectId,
         clients: [...source.clients],
+        // The same files, not copies of them: an attachment is stored once and
+        // pointed at, so a duplicated card shares the bytes rather than
+        // doubling them — and removing it from one card leaves the other whole.
+        attachments: source.attachments.map((file) => ({ ...file })),
         // The copy is its own card: it gets its own calendar entry, or none.
         publish: false,
         eventId: null,
@@ -760,6 +769,27 @@ function oneClient(value: Partial<Project> & { clients?: unknown }, clients: Rec
  *  An empty label is kept rather than dropped — same as a project or card
  *  title — so an expense mid-edit can't be sunk by a sync landing between
  *  keystrokes. */
+/** Attachment metadata, as tolerantly as everything else here: a file whose
+ *  record survived but whose bytes did not is still worth listing — it is what
+ *  tells you something is missing rather than never having been there. */
+function normaliseAttachments(input: unknown): Attachment[] {
+  if (!Array.isArray(input)) return [];
+  const files: Attachment[] = [];
+  for (const value of input as Partial<Attachment>[]) {
+    if (!value || typeof value !== 'object') continue;
+    if (typeof value.id !== 'string' || !FILE_ID.test(value.id)) continue;
+    if (files.some((file) => file.id === value.id)) continue;
+    files.push({
+      id: value.id,
+      name: typeof value.name === 'string' && value.name.trim() ? value.name.slice(0, ATTACHMENT_NAME_MAX) : 'File',
+      type: typeof value.type === 'string' ? value.type : 'application/octet-stream',
+      size: Number.isFinite(value.size) ? Math.max(0, Math.round(Number(value.size))) : 0,
+      createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date().toISOString(),
+    });
+  }
+  return files;
+}
+
 function normaliseExpenses(input: unknown): Expense[] {
   if (!Array.isArray(input)) return [];
   const expenses: Expense[] = [];
@@ -799,6 +829,7 @@ function normaliseProjects(
       clientId: oneClient(value, clients),
       colour: typeof value.colour === 'string' && categories[value.colour] ? value.colour : categoryOrder[0],
       expenses: normaliseExpenses(value.expenses),
+      attachments: normaliseAttachments(value.attachments),
       archived: value.archived === true,
       createdAt: value.createdAt ?? now,
       updatedAt: value.updatedAt ?? now,
@@ -845,6 +876,7 @@ export function normalise(input: unknown): BoardState {
       eventId: typeof value.eventId === 'string' ? value.eventId : null,
       completedAt: typeof value.completedAt === 'string' ? value.completedAt : null,
       updates: normaliseCardUpdates((value as Partial<Card>).updates, updateCategories, updateCategoryOrder),
+      attachments: normaliseAttachments((value as Partial<Card>).attachments),
       createdAt: value.createdAt ?? new Date().toISOString(),
       updatedAt: value.updatedAt ?? new Date().toISOString(),
     };

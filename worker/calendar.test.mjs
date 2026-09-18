@@ -274,4 +274,7 @@ test('rich text comes out as lines a calendar entry can show', () => {
   assert.equal(htmlToText('a<br>b'), 'a\nb');
   assert.equal(htmlToText('&amp;lt;not a tag&amp;gt;'), '&lt;not a tag&gt;');
   assert.equal(htmlToText('<p>  </p>'), '');
+  // A description that is only a picture must not read as no description.
+  assert.equal(htmlToText('<img data-file-id="abc123xyz" src="/api/files/abc123xyz">'), '[image]');
+  assert.equal(htmlToText('<p>Before</p><img src="/api/files/abc123xyz"><p>After</p>'), 'Before\n\n[image]\n\nAfter');
 });

@@ -19,6 +19,7 @@
  */
 
 import { emailAllowed, teamHost, verifyAccess, type AccessIdentity, type AccessResult } from './access';
+import { fileIdFrom, handleFile, listFiles } from './files';
 import {
   DEFAULT_FEED_OPTIONS,
   isValidTimeZone,
@@ -303,6 +304,23 @@ async function handleApi(
     const allowed = authorise(request, env, access);
     if (allowed instanceof Response) return allowed;
     return handleFeedApi(request, env, new URL(request.url).origin);
+  }
+
+  // The attachment store. Files are kept per id rather than in the board blob
+  // — see `files.ts` — and guarded exactly as the board is: there is no reading
+  // someone's brief off a Worker you cannot read the board off.
+  if (path === '/api/files' || path.startsWith('/api/files/')) {
+    const allowed = authorise(request, env, access);
+    if (allowed instanceof Response) return allowed;
+
+    if (path === '/api/files') {
+      if (request.method !== 'GET') return json({ error: 'method-not-allowed' }, 405, { allow: 'GET' });
+      return listFiles(env.BOARD, boardKey(env));
+    }
+
+    const id = fileIdFrom(path);
+    if (!id) return json({ error: 'not-found' }, 404);
+    return handleFile(request, env.BOARD, boardKey(env), id);
   }
 
   if (path !== '/api/board') return json({ error: 'not-found' }, 404);

@@ -229,6 +229,8 @@ export interface Project {
   colour: CategoryId;
   /** Costs against the project's value — expenses, not time. */
   expenses: Expense[];
+  /** Files on the project — a brief, a quote, the signed order. */
+  attachments: Attachment[];
   /** Archived projects drop out of the pickers but keep their cards. */
   archived: boolean;
   createdAt: string;
@@ -363,6 +365,52 @@ export function updateCategoryLabel(categories: UpdateCategories, id: string): s
   return category.label.trim() || DEFAULT_UPDATE_CATEGORIES[id]?.label || 'Uncategorised';
 }
 
+/* ---------- attachments ---------- */
+
+/** A file kept with a card or a project: an image pasted into a description, a
+ *  brief, a quote, a signed order.
+ *
+ *  Only what a file *is* travels in the board — the bytes never do. They sit in
+ *  the browser's own file store and, once there is a Worker to sync to,
+ *  alongside the board there; `id` is the whole address of both. A board blob
+ *  that grew a megabyte every time someone pasted a screenshot would stop
+ *  syncing long before anyone ran out of screenshots. */
+export interface Attachment {
+  id: string;
+  /** What it was called when it arrived, and what it downloads as. */
+  name: string;
+  /** What the browser said it was, e.g. `image/png`. */
+  type: string;
+  /** Bytes. */
+  size: number;
+  createdAt: string;
+}
+
+/** Long enough for a real filename, short enough not to wreck a row. */
+export const ATTACHMENT_NAME_MAX = 120;
+
+/** What an attachment id may be. It ends up as a URL path segment, a storage
+ *  key in the browser and a key in KV, so it stays to the characters all three
+ *  read the same way. The Worker keeps its own copy of this, being a separate
+ *  program that has to distrust what it is sent regardless. */
+export const FILE_ID = /^[A-Za-z0-9_-]{6,64}$/;
+
+/** Per file. A KV value tops out at 25 MB, and this leaves room under that for
+ *  a phone photo or a page of PDF while keeping a video out of the question —
+ *  which is the right way round for a planner. */
+export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+
+/** The ones shown as a thumbnail, and the ones a description can hold inline. */
+export const isImageType = (type: string) => type.startsWith('image/');
+
+/** File sizes, at the precision anyone actually reads them at. */
+export function formatBytes(size: number): string {
+  if (!Number.isFinite(size) || size <= 0) return '0 KB';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(size < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
 /* ---------- cards ---------- */
 
 /** A discrete piece of logged work on a card — what kind it was, and how long
@@ -412,6 +460,9 @@ export interface Card {
   /** Discrete logged work — what was done, and how long it took, kept apart
    *  from the card's own rough estimate. */
   updates: CardUpdate[];
+  /** Files on the card. Images pasted into the description are not listed
+   *  here — those are in the description, which is where they are read. */
+  attachments: Attachment[];
   createdAt: string;
   updatedAt: string;
 }
