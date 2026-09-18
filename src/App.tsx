@@ -92,6 +92,7 @@ import {
 } from './dates';
 import { summarise } from './cardText';
 import { useSync } from './sync';
+import { flushUploads, referencedFileIds, setRemoteFiles, sweepAttachments } from './attachments';
 import { useAppUpdate } from './updates';
 import { effectiveConfig, useM365, usePublishing } from './m365';
 import { useCalendarFeed } from './feed';
@@ -99,6 +100,10 @@ import { ConflictBar, OfflineBar } from './components/SyncBadge';
 
 const SETTINGS_KEY = 'tcard-planner.settings.v1';
 const HISTORY_LIMIT = 40;
+
+/** Long enough after a load or a sync for the board to be the board rather
+ *  than whatever it was mid-pull. Nothing waits on it. */
+const SWEEP_DELAY_MS = 8000;
 
 /** Pointer position beats bounding-box overlap on a board this wide: a card is
  *  wider than the gap between columns, so rect-based hits drift a lane sideways.
@@ -203,6 +208,42 @@ export default function App() {
     },
     [locked],
   );
+
+  /**
+   * Attachments follow the board's own connection.
+   *
+   * With nowhere to sync to, a file stays on the device that took it — which is
+   * the whole of how the board works offline, and no worse for files than for
+   * cards. The moment there is a Worker and a login, the queue of files added
+   * meanwhile goes up, and files added on another device can be fetched down.
+   */
+  const filesRemote = sync.status !== 'off' && sync.status !== 'unconfigured';
+
+  useEffect(() => {
+    setRemoteFiles(filesRemote);
+  }, [filesRemote]);
+
+  /**
+   * Clears out files nothing points at any more — a card deleted, an image
+   * taken back out of a description.
+   *
+   * Once, a little after the board has settled, rather than on every edit: the
+   * board in hand has to be one the server agrees with before its idea of what
+   * is unused can be acted on, and a sweep that runs while you are still typing
+   * is a sweep racing the thing it is reading.
+   */
+  const inStep = sync.status === 'idle' || sync.status === 'off';
+
+  useEffect(() => {
+    if (!inStep) return;
+    const timer = setTimeout(() => {
+      void flushUploads();
+      void sweepAttachments(referencedFileIds(latestBoard.current), { remote: filesRemote });
+    }, SWEEP_DELAY_MS);
+    return () => clearTimeout(timer);
+    // Deliberately not re-run on every edit: the board is read when it fires.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inStep, filesRemote]);
 
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));

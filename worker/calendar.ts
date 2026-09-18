@@ -222,6 +222,10 @@ function fold(line: string): string {
 /** Rich text as the plain lines a calendar entry can show. */
 export function htmlToText(html: string): string {
   return html
+    // An image can't travel in a text calendar entry, and dropping it silently
+    // leaves a card whose description is a picture looking like a card with no
+    // description at all. Say it is there instead.
+    .replace(/<\s*img\b[^>]*>/gi, '\n\n[image]\n\n')
     .replace(/<\s*(br|hr)\s*\/?\s*>/gi, '\n')
     .replace(/<\s*li[^>]*>/gi, '\n- ')
     // `li` is not in the list: its opening tag already started the line, and

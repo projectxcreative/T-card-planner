@@ -1,8 +1,8 @@
 # T-Card Planner
 
 A work planner that sits between a T-card board, a calendar and a kanban board.
-Cards carry a title and a rich text description, live in a column per day, and
-move by drag and drop. They can belong to a **project** with a value against it,
+Cards carry a title and a rich text description — images pasted into it and
+files attached beside it — live in a column per day, and move by drag and drop. They can belong to a **project** with a value against it,
 be tagged with the **clients** they're for, and reach your **Microsoft 365
 calendar** — either as a link Outlook subscribes to, or written into it
 directly.
@@ -95,7 +95,9 @@ cards than fit says how many more.
 
 A project is a piece of work several cards belong to: a title, a rich text
 description, a **value in pounds**, a category, a **stage**, and the client it's
-for. One client, not a list — a project belongs to whoever is paying for it.
+for. One client, not a list — a project belongs to whoever is paying for it. It
+takes files the same way a card does — the brief, the quote, images pasted into
+the description.
 
 **The table.** Projects are a table of rows — project, stage, client, cards,
 hours, value — with one set of column headings for the whole page, so the
@@ -230,8 +232,10 @@ and it's the thing you read the board by from across the room.
   Dropping it nowhere puts it back, and `Esc` mid-drag cancels.
 - **Click** a card to open it: title, status, category, project, clients, size,
   day, start time, and a rich text description with headings, lists, checklists,
-  links and code. It opens in a sidebar or a window, whichever you picked in
-  Settings.
+  links, code and images. It opens in a sidebar or a window, whichever you
+  picked in Settings.
+- **Files** go on a card two ways: paste or drop an image straight into the
+  description, or put anything at all on the **Files** list under it. See below.
 ![A card open for editing](docs/card.png)
 
 - **Status** is the kanban part — To do, In progress, Blocked, Done. Ticking a
@@ -250,6 +254,55 @@ and it's the thing you read the board by from across the room.
 - **Start** puts the card at a time of day, which is where the day view draws
   it. Dragging it about on that timeline is usually easier than typing one.
 - **Publish to calendar** mirrors the card into Microsoft 365 — see below.
+
+## Files and images
+
+Cards and projects both take files, in two places that mean two different
+things.
+
+**In the description.** Paste a screenshot, drop an image on the text, or use
+the **▣** button in the toolbar. It appears where the cursor is and stays with
+the words around it — a reference shot next to the note about it, a crop of the
+bit that's wrong under the line describing it. Copying from a page that mixes
+text and pictures pastes as text, as it always did: a paste is only treated as
+an image when an image is all there is.
+
+**On the Files list.** Under the description on a card, and under a project's
+own, is a list for everything else: the brief, the quote, the signed order, the
+export you sent. Drop files on it or pick them; drop a file that isn't an image
+on the *description* and it lands here too, rather than in the middle of a
+sentence. Click a name to download it, and **✕** to take it off.
+
+Up to 10 MB a file, and that is the only limit worth remembering.
+
+**Where the bytes actually are.** Not in the board. The board is one JSON
+document that every device holds whole and sends whole, and a week of pasted
+screenshots in it would be a week of them re-uploaded on every keystroke. What
+the board carries is a file's name, type, size and id; the bytes are kept in the
+browser's own file storage and, if you sync, next to the board on the Worker,
+under that same id.
+
+That is what makes the ordinary cases ordinary:
+
+- **With no server at all**, files work. They stay on the device that took them,
+  exactly as the cards do.
+- **Signed in**, a file added on the laptop is fetched by the phone the first
+  time it's looked at, and kept there afterwards — so the second look, and every
+  look after a signal drops, costs nothing.
+- **Added while offline**, a file goes up when you're back, along with the board.
+- **A file whose card was deleted** is cleared from both sides a day later, once
+  the board it belonged to has stopped being anyone's current board. Nothing is
+  swept the moment it goes unused, because "unused" on one device is very often
+  "not pulled yet".
+- **The JSON export** carries what the files are, not the files. Attachments
+  need the board they hang off; a JSON backup taken to a fresh Worker brings the
+  list and the names, and the files themselves stay where they were.
+
+Two notes on the edges. A card **published to Outlook** shows `[image — see the
+card]` where an inline image was: the entry is a copy sitting in someone else's
+calendar, and the image is behind the board's own login. And a file is always
+served as a download unless it is a plain, inert image — the board and its files
+share an address, so nothing uploaded is ever given the chance to run there.
 
 ## Settings
 
@@ -604,8 +657,15 @@ whole board and the revision it last agreed with the server:
   nothing is silently dropped: you are shown both and pick a side. The same
   happens when you first connect a device that already has real work on it.
 
+Attachments follow the same road by a different lane: the board carries what a
+file is, and the file itself is fetched from the Worker the first time a device
+looks at it. See **Files and images** above.
+
 **Export** still writes a dated JSON backup and **Import** reads one back.
-Worth doing occasionally regardless — one KV key is not a backup strategy.
+Worth doing occasionally regardless — one KV key is not a backup strategy. The
+JSON holds the cards, the projects and the list of what is attached to them; the
+attached files themselves live beside the board on the Worker rather than inside
+the export.
 
 ## Deploying it
 
@@ -631,6 +691,9 @@ domain is the only way in — otherwise the same board answers on a second
 address that no Access policy on the domain covers. Attach the domain itself in
 the dashboard rather than in config: a domain declared in `wrangler.jsonc` makes
 a CI deploy ask for a confirmation it cannot get, and fail.
+
+Attachments need nothing extra: they go in the same KV namespace as the board,
+under a key each, so a Worker that syncs a board can already hold its files.
 
 Worth knowing: KV is eventually consistent, so a write can take a few seconds
 to reach another region, in which case the other device sees the older board
@@ -762,6 +825,8 @@ npm i -D playwright-core && node scripts/screenshots.mjs
 worker/index.ts        the Worker: /api/board over KV, and the built app
 worker/access.ts       verifies the Cloudflare Access login on every request
 worker/access.test.mjs signed-JWT checks for it — `npm test`
+worker/files.ts        the attachment store: a KV key per file, served safely
+worker/files.test.mjs  what a file may be called, be typed, and be served as
 wrangler.jsonc         Worker config — KV binding, assets, SPA fallback
 .env.example           build-time settings; the Microsoft 365 app registration
 public/logo.svg        the mark: the favicon, and the source for the app icons
@@ -778,6 +843,7 @@ src/
   lookups.tsx          projects and clients, for the card face to name them
   colour.ts            one chosen hex -> dark-theme twin and readable ink
   cardText.ts          card-face summary of the rich text
+  attachments.ts       files: IndexedDB on the device, the Worker between them
   components/
     TopBar.tsx         the view tabs, date nav, search, theme, settings
     SettingsDialog.tsx categories, clients, card defaults, the week, calendar
@@ -791,6 +857,7 @@ src/
     BillingView.tsx    projects by invoice month, and what each month comes to
     ClientFilter.tsx   the toolbar popover that narrows the board to a client
     RichText.tsx       Tiptap editor, lazy-loaded on first card open
+    Attachments.tsx    the file list on a card or a project
     SyncBadge.tsx      sync status, who you're signed in as, the conflict prompt
 ```
 
@@ -817,6 +884,14 @@ a corner in pixels — which is what makes a skin possible. The draft skin chang
 nothing but the values of those tokens, so squaring the whole app off and moving
 it onto whole-pixel type is a dozen declarations rather than a sweep of
 overrides fighting the base rules.
+
+Attachments are deliberately outside the board blob. A description stores an
+image as `<img src="/api/files/ID" data-file-id="ID">` — the address the Worker
+serves it from, so the HTML means something on its own — while the editor draws
+it through a node view that swaps in a local blob URL when this device already
+has the bytes. The id is minted once and the bytes behind it never change, which
+is what lets a file be cached for a year, fetched from wherever it is found
+first, and swept by nothing more than asking which ids the board still mentions.
 
 Category colours reach the CSS as custom properties written into the document
 from the board's own settings, so everything downstream goes on naming

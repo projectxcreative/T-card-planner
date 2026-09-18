@@ -12,7 +12,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import type { Card, CategoryId, Client, Expense, LaneId, Project, ProjectStage, StageGroup } from '../types';
+import type { Attachment, Card, CategoryId, Client, Expense, LaneId, Project, ProjectStage, StageGroup } from '../types';
 import {
   BACKLOG,
   EXPENSE_LABEL_MAX,
@@ -27,6 +27,7 @@ import {
   projectCosts,
 } from '../types';
 import { uid } from '../store';
+import Attachments, { useAttachmentActions } from './Attachments';
 import { useCategories } from '../categories';
 import { useLookups } from '../lookups';
 import { formatEstimate } from '../cardText';
@@ -241,6 +242,11 @@ function ExpensesField({ project, onPatch }: { project: Project; onPatch: Props[
 
 function ProjectDescription({ project, onPatch }: { project: Project; onPatch: Props['onPatch'] }) {
   const [html, setHtml] = useState(project.description);
+  // A file dropped into the text that isn't an image belongs on the list
+  // below, not in the middle of a sentence.
+  const { add } = useAttachmentActions(project.attachments, (next: Attachment[]) =>
+    onPatch(project.id, { attachments: next }),
+  );
   const patchRef = useRef(onPatch);
   patchRef.current = onPatch;
 
@@ -254,8 +260,20 @@ function ProjectDescription({ project, onPatch }: { project: Project; onPatch: P
 
   return (
     <Suspense fallback={<div className="rt rt-loading" />}>
-      <RichText value={html} onChange={setHtml} />
+      <RichText value={html} onChange={setHtml} onAttach={(files) => void add(files)} />
     </Suspense>
+  );
+}
+
+/** A project's own files: the brief, the quote, the signed order. Same store
+ *  and same rules as a card's — see `Attachments`. */
+function ProjectFiles({ project, onPatch, locked }: { project: Project; onPatch: Props['onPatch']; locked?: boolean }) {
+  return (
+    <Attachments
+      attachments={project.attachments}
+      onChange={(next: Attachment[]) => onPatch(project.id, { attachments: next })}
+      locked={locked}
+    />
   );
 }
 
@@ -1151,6 +1169,11 @@ export default function ProjectsView(props: Props) {
               <div className="field">
                 <span className="field-label">Description</span>
                 <ProjectDescription key={active.id} project={active} onPatch={onPatch} />
+              </div>
+
+              <div className="field">
+                <span className="field-label">Files</span>
+                <ProjectFiles project={active} onPatch={onPatch} locked={locked} />
               </div>
 
               <div className="field">

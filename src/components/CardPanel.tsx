@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Card, CardSurface, CardUpdate, CategoryId, LaneId, Status } from '../types';
+import type { Attachment, Card, CardSurface, CardUpdate, CategoryId, LaneId, Status } from '../types';
 import {
   BACKLOG,
   STATUSES,
@@ -10,6 +10,7 @@ import {
   totalUpdateMinutes,
   updateCategoryLabel,
 } from '../types';
+import Attachments, { useAttachmentActions } from './Attachments';
 import { useCategories } from '../categories';
 import { useLookups } from '../lookups';
 import { formatMinutes } from '../cardText';
@@ -317,6 +318,11 @@ function CardBody(props: CardPanelProps) {
     )
     .sort((a, b) => a.title.localeCompare(b.title));
 
+  const setAttachments = (next: Attachment[]) => onPatch(card.id, { attachments: next });
+  // The same adder the list uses, so a file dropped into the description that
+  // isn't an image lands on the list rather than being turned away.
+  const { add: attach } = useAttachmentActions(card.attachments, setAttachments);
+
   const toggleClient = (id: string) => {
     const next = card.clients.includes(id) ? card.clients.filter((x) => x !== id) : [...card.clients, id];
     onPatch(card.id, { clients: next });
@@ -495,8 +501,13 @@ function CardBody(props: CardPanelProps) {
       <div className="field">
         <span className="field-label">Description</span>
         <Suspense fallback={<div className="rt rt-loading" />}>
-          <RichText value={html} onChange={setHtml} />
+          <RichText value={html} onChange={setHtml} onAttach={(files) => void attach(files)} />
         </Suspense>
+      </div>
+
+      <div className="field">
+        <span className="field-label">Files</span>
+        <Attachments attachments={card.attachments} onChange={setAttachments} locked={locked} />
       </div>
     </div>
   );
