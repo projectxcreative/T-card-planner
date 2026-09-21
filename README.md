@@ -185,6 +185,11 @@ follow as it lands. That covers moving work between months you can see; the
 dropdown on the row reaches any month, including ones with nothing in them yet.
 Dropping onto *No invoice month yet* takes the month off again.
 
+Every figure here is what the client is billed — the project's value plus any
+expense on it marked *chargeable* — the same total the Projects list shows, so
+the two views never disagree about what a job comes to. Hover a row's figure for
+the split.
+
 Lost work is listed but counted at nothing, and archived projects are left out
 entirely: putting one away means you have stopped counting it, and that has to
 include the invoice list or these totals and the ones on the Projects list
@@ -197,8 +202,9 @@ disagree.
 The same shape as Projects, from the other direction: pick a client and see
 what you're doing for them.
 
-- **Value** is their open projects added up, lost ones excluded; **Still to do**
-  and **Logged** are the hours on their cards.
+- **Value** is their open projects added up, lost ones excluded, each counted at
+  what they are billed for — value plus chargeable expenses, as on the Projects
+  list; **Still to do** and **Logged** are the hours on their cards.
 - **Their cards** means cards tagged with them *and* every card on their
   projects. That second half matters: a card created inside a project inherits
   its client, but one assigned to the project later doesn't — and either way, a

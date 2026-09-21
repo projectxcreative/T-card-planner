@@ -19,6 +19,7 @@ import {
   PROJECT_STAGES,
   billingBucket,
   isLost,
+  projectTotal,
   defaultCategories,
   defaultUpdateCategories,
   type Attachment,
@@ -242,7 +243,8 @@ export interface BillingMonth {
   /** `YYYY-MM`, or null for the projects that have not been given a month. */
   key: string | null;
   rows: BillingRow[];
-  /** Everything in the month that is still worth something. Lost work is not. */
+  /** Everything in the month that is still worth something, counted at what
+   *  the client is billed — value plus chargeable expenses. Lost work is not. */
   total: number;
   byBucket: Record<BillingBucket, { count: number; value: number }>;
 }
@@ -274,9 +276,13 @@ export function billingMonths(state: BoardState): BillingMonth[] {
       let total = 0;
       for (const row of rows) {
         if (!row.bucket) continue; // lost: listed, but worth nothing
+        // What the invoice comes to, not just the fee: an expense marked
+        // chargeable is billed on to the client, so it belongs in the month's
+        // figures exactly as it does in the projects list.
+        const value = projectTotal(row.project);
         byBucket[row.bucket].count += 1;
-        byBucket[row.bucket].value += row.project.value;
-        total += row.project.value;
+        byBucket[row.bucket].value += value;
+        total += value;
       }
       rows.sort((x, y) => byStage(x.project, y.project));
       return { key, rows, total, byBucket };
@@ -290,7 +296,8 @@ export function billingMonths(state: BoardState): BillingMonth[] {
 }
 
 /** What a client is worth and how much of it has been done. Value comes from
- *  their projects; hours come from their cards, which is a wider net. */
+ *  their projects, each at what they are billed for — chargeable expenses
+ *  included; hours come from their cards, which is a wider net. */
 export function clientTotals(
   state: BoardState,
   clientId: string,
@@ -301,7 +308,7 @@ export function clientTotals(
     // A lost project is worth nothing; counting it would overstate the client.
     value: projects
       .filter((project) => !project.archived && !isLost(project.stage))
-      .reduce((sum, project) => sum + project.value, 0),
+      .reduce((sum, project) => sum + projectTotal(project), 0),
     projects: projects.length,
     cards: cards.length,
     done: cards.filter(({ card }) => card.status === 'done').length,

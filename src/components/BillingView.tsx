@@ -14,7 +14,15 @@ import {
 } from '@dnd-kit/core';
 import type { BillingMonth } from '../store';
 import type { BillingBucket, Client, Project } from '../types';
-import { BILLING_BUCKETS, BILLING_LABELS, STAGE_GROUP, STAGE_LABELS, formatMoney } from '../types';
+import {
+  BILLING_BUCKETS,
+  BILLING_LABELS,
+  STAGE_GROUP,
+  STAGE_LABELS,
+  chargeableExpenses,
+  formatMoney,
+  projectTotal,
+} from '../types';
 import { formatMonthKey, monthChoices } from '../dates';
 
 interface Props {
@@ -160,7 +168,19 @@ export default function BillingView({ months, clients, onMonth, onOpenProject, l
                       </span>
                     )}
                     <span className={`stage s-stage-${STAGE_GROUP[project.stage]}`}>{STAGE_LABELS[project.stage]}</span>
-                    <span className="billing-row-value">{project.value > 0 ? formatMoney(project.value) : '—'}</span>
+                    {/* What the invoice comes to: the value plus whatever is
+                        being billed on, since that is the figure the month's
+                        totals and the projects list are both built from. */}
+                    <span
+                      className="billing-row-value"
+                      title={
+                        chargeableExpenses(project) > 0
+                          ? `${formatMoney(project.value)} value plus ${formatMoney(chargeableExpenses(project))} chargeable to the client`
+                          : undefined
+                      }
+                    >
+                      {projectTotal(project) > 0 ? formatMoney(projectTotal(project)) : '—'}
+                    </span>
                   </button>
 
                   {/* Moving a job to another month is the edit this view exists
@@ -194,7 +214,7 @@ export default function BillingView({ months, clients, onMonth, onOpenProject, l
         {dragging ? (
           <span className="billing-ghost">
             {dragging.title || 'Untitled project'}
-            <strong>{dragging.value > 0 ? formatMoney(dragging.value) : '—'}</strong>
+            <strong>{projectTotal(dragging) > 0 ? formatMoney(projectTotal(dragging)) : '—'}</strong>
           </span>
         ) : null}
       </DragOverlay>
