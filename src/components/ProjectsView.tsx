@@ -25,6 +25,7 @@ import {
   chargeableExpenses,
   formatMoney,
   projectCosts,
+  projectTotal,
 } from '../types';
 import { uid } from '../store';
 import Attachments, { useAttachmentActions } from './Attachments';
@@ -396,10 +397,13 @@ function ProjectStats({ project, stats }: { project: Project; stats: Tally }) {
         )}
 
         {chargeable > 0 && (
-          <li className="projstat" title="Expenses billed on to the client, recovered in full">
+          <li
+            className="projstat"
+            title={`Expenses billed on to the client, recovered in full — the list totals this project at ${formatMoney(projectTotal(project))}`}
+          >
             <span className="projstat-label">Billed on</span>
             <span className="projstat-value">{formatMoney(chargeable)}</span>
-            <span className="projstat-note">chargeable</span>
+            <span className="projstat-note">{formatMoney(projectTotal(project))} total</span>
           </li>
         )}
 
@@ -582,6 +586,8 @@ function readGroupBy(): GroupBy {
 interface GroupSums {
   count: number;
   value: number;
+  /** How much of the value is expenses passed on to the client. */
+  chargeable: number;
   cards: number;
   done: number;
   hours: number;
@@ -645,6 +651,8 @@ function ProjectRow({
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: project.id, data: { group } });
   const client = project.clientId ? clients[project.clientId] : undefined;
+  const chargeable = chargeableExpenses(project);
+  const total = projectTotal(project);
   const classes = ['proj-row', `c-${project.colour}`];
   if (selected) classes.push('is-on');
 
@@ -717,7 +725,20 @@ function ProjectRow({
         {formatEstimate(stats.hours) || '—'}
       </span>
 
-      <span className="proj-cell is-value proj-num">{formatMoney(project.value)}</span>
+      {/* The row's total is what the client is billed: the value plus anything
+          chargeable on the project, since a passed-on cost still goes on the
+          invoice. The breakdown lives in the title so the column stays a
+          single figure. */}
+      <span
+        className="proj-cell is-value proj-num"
+        title={
+          chargeable > 0
+            ? `${formatMoney(project.value)} value plus ${formatMoney(chargeable)} chargeable to the client`
+            : undefined
+        }
+      >
+        {formatMoney(total)}
+      </span>
     </li>
   );
 }
@@ -785,7 +806,7 @@ export default function ProjectsView(props: Props) {
     const sums = { prospect: 0, committed: 0, owed: 0, banked: 0, lost: 0 } as Record<StageGroup, number>;
     for (const project of projects) {
       if (project.archived) continue;
-      sums[STAGE_GROUP[project.stage]] += project.value;
+      sums[STAGE_GROUP[project.stage]] += projectTotal(project);
     }
     return sums;
   }, [projects]);
@@ -825,9 +846,10 @@ export default function ProjectsView(props: Props) {
 
     return heads.map((head) => {
       const own = rows.get(head.key) ?? [];
-      const sums: GroupSums = { count: own.length, value: 0, cards: 0, done: 0, hours: 0 };
+      const sums: GroupSums = { count: own.length, value: 0, chargeable: 0, cards: 0, done: 0, hours: 0 };
       for (const project of own) {
-        sums.value += project.value;
+        sums.value += projectTotal(project);
+        sums.chargeable += chargeableExpenses(project);
         const stats = tallies[project.id];
         if (!stats) continue;
         sums.cards += stats.cards;
@@ -1010,7 +1032,16 @@ export default function ProjectsView(props: Props) {
                         )}
                       </span>
                       <span className="proj-cell is-hours proj-num">{formatEstimate(group.sums.hours) || '—'}</span>
-                      <span className="proj-cell is-value proj-num">{formatMoney(group.sums.value)}</span>
+                      <span
+                        className="proj-cell is-value proj-num"
+                        title={
+                          group.sums.chargeable > 0
+                            ? `${formatMoney(group.sums.value - group.sums.chargeable)} of value plus ${formatMoney(group.sums.chargeable)} chargeable to the client`
+                            : undefined
+                        }
+                      >
+                        {formatMoney(group.sums.value)}
+                      </span>
                     </div>
                   )}
                 </GroupDrop>
@@ -1021,7 +1052,7 @@ export default function ProjectsView(props: Props) {
               {dragging ? (
                 <span className="proj-ghost">
                   {dragging.title || 'Untitled project'}
-                  <strong>{formatMoney(dragging.value)}</strong>
+                  <strong>{formatMoney(projectTotal(dragging))}</strong>
                 </span>
               ) : null}
             </DragOverlay>

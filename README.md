@@ -104,12 +104,16 @@ hours, value — with one set of column headings for the whole page, so the
 figures line up down it rather than group by group. Stage and client are
 dropdowns on the row itself: they're the two fields that actually change while
 you're looking at the list, and changing them there beats opening each project
-to do it.
+to do it. **Value** on a row is what the client is billed: the project's value
+plus any expense on it marked *chargeable*, since a cost passed on still goes
+on the invoice. Hover it for the split. Costs you absorb aren't in it — they
+come off the project's net, shown on the project itself.
 
 **Grouping.** *Group by* switches the runs between **Stage** and **Client** —
 the same projects, answering either "what's happening" or "who it's for". Each
 run ends in a **subtotal** in its own columns: what that stage or that client
-comes to in cards, hours and money. Every group is listed whether or not
+comes to in cards, hours and money — money on the same footing as the rows,
+chargeable expenses included. Every group is listed whether or not
 anything is in it, because an empty stage is both worth seeing and the only
 place a project can be dragged to before it has company there. Which grouping
 you last used is remembered on the device.
@@ -134,7 +138,8 @@ them, so it reads top to bottom as a funnel:
 | Paid | Paid |
 | Closed lost | nothing |
 
-The four totals above the list are those groups added up. They're grouped by
+The four totals above the list are those groups added up, counting the rows as
+the rows do — chargeable expenses in, absorbed costs out. They're grouped by
 what a stage means for the money rather than by how far along it is — *Won* and
 *Delivered* are miles apart in the process and identical in the ledger, both
 being work you're committed to and haven't billed for. A lost project is worth
