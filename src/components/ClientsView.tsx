@@ -1,6 +1,15 @@
 import { useMemo, useState } from 'react';
 import type { Card, Client, LaneId, Project } from '../types';
-import { BACKLOG, CLIENT_NAME_MAX, STAGE_GROUP, STAGE_LABELS, STATUS_LABELS, formatMoney } from '../types';
+import {
+  BACKLOG,
+  CLIENT_NAME_MAX,
+  STAGE_GROUP,
+  STAGE_LABELS,
+  STATUS_LABELS,
+  chargeableExpenses,
+  formatMoney,
+  projectTotal,
+} from '../types';
 import { formatEstimate } from '../cardText';
 
 export interface ClientTotals {
@@ -185,7 +194,19 @@ export default function ClientsView(props: Props) {
                         <span className="split-card-title">{project.title || 'Untitled project'}</span>
                         <span className={`stage s-stage-${STAGE_GROUP[project.stage]}`}>{STAGE_LABELS[project.stage]}</span>
                         {project.archived && <span className="pill">Archived</span>}
-                        <span className="split-card-est">{formatMoney(project.value)}</span>
+                        {/* The same figure the projects list shows: value plus
+                            anything chargeable, so a client's projects add up
+                            to the total above them. */}
+                        <span
+                          className="split-card-est"
+                          title={
+                            chargeableExpenses(project) > 0
+                              ? `${formatMoney(project.value)} value plus ${formatMoney(chargeableExpenses(project))} chargeable to the client`
+                              : undefined
+                          }
+                        >
+                          {formatMoney(projectTotal(project))}
+                        </span>
                       </button>
                     </li>
                   ))}
