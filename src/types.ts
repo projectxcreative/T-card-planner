@@ -250,6 +250,14 @@ export function chargeableExpenses(project: Project): number {
   return project.expenses.reduce((sum, expense) => (expense.chargeable ? sum + expense.amount : sum), 0);
 }
 
+/** What the client is billed for: the project's own value plus the expenses
+ *  passed on to them. A chargeable cost is money that goes on the invoice, so
+ *  it belongs in any figure that reads as a project's total — the lists and
+ *  their subtotals — while the value on its own stays what the work earns. */
+export function projectTotal(project: Project): number {
+  return project.value + chargeableExpenses(project);
+}
+
 /* ---------- settings ---------- */
 
 /** Where a card opens: beside the board, or over it. */
