@@ -7,6 +7,30 @@ be tagged with the **clients** they're for, and reach your **Microsoft 365
 calendar** — either as a link Outlook subscribes to, or written into it
 directly.
 
+## Demo deployment
+
+`wrangler.demo.jsonc` deploys the same built app to
+`demo.planner.projectxcreative.com`. It uses the existing KV namespace but a
+separate `demo-board` key; its attachments and calendar feed use that key as
+their prefix. The separate hostname also gives the demo its own browser
+storage. A demo deployment returns 503 until Cloudflare Access is configured
+for that Worker, so it cannot accidentally expose the board while being set up.
+
+Protect the demo hostname with its own Cloudflare Access application allowing
+only `demo@projectxcreative.com`. Set that application's audience tag as the
+demo Worker's `ACCESS_AUD` secret, set `ACCESS_TEAM_DOMAIN`, and set
+`ACCESS_EMAILS=demo@projectxcreative.com` as a second check. Do not add the
+shared `BOARD_TOKEN` to the demo Worker. An Access bypass on
+`/calendar/*` is only needed if a calendar feed is enabled for the demo.
+Keep the live Access application restricted to
+`hello@projectxcreative.com`; a domain-wide rule would let the demo login
+reach the live board.
+
+`npm run deploy:demo` deploys the demo alone. `npm run deploy:all` builds once
+and deploys that same build to the live and demo Workers, keeping their app code
+in sync. Changes to Worker secrets and Access policies are managed separately
+for each deployment.
+
 ![The board](docs/board.png)
 
 ## Running it

@@ -34,6 +34,8 @@ export interface Env {
   BOARD_TOKEN?: string;
   /** Lets one namespace hold several boards if you ever want a second. */
   BOARD_KEY?: string;
+  /** A demo deployment must never serve the app before Access is configured. */
+  DEMO_MODE?: string;
   /** Your Zero Trust team, e.g. `myteam` or `myteam.cloudflareaccess.com`. */
   ACCESS_TEAM_DOMAIN?: string;
   /** The Application Audience tag of the Access application on this domain. */
@@ -403,6 +405,9 @@ function deniedPage(reason: 'missing' | 'expired' | 'invalid'): Response {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if (env.DEMO_MODE && !accessConfigured(env)) {
+      return json({ error: 'demo-auth-not-configured' }, 503);
+    }
     const url = new URL(request.url);
     const path = url.pathname;
 

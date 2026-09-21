@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
     "test": "node --test \"worker/**/*.test.mjs\"",
     "dev:worker": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:demo": "npm run build && wrangler deploy --config wrangler.demo.jsonc",
+    "deploy:all": "npm run build && wrangler deploy && wrangler deploy --config wrangler.demo.jsonc"
   },
   "repository": {
     "type": "git",
