@@ -59,16 +59,27 @@ export function createStore<T>(initialState: T): StoreApi<T> {
 
   function useStore<Slice = T>(
     selector: (state: T) => Slice = (s) => s as unknown as Slice,
-    equalityFn: (a: Slice, b: Slice) => boolean = Object.is,
+    equalityFn: (a: Slice, b: Slice) => boolean = shallowEqual,
   ): Slice {
     const currentSliceRef = useRef<Slice | undefined>(undefined);
+    // The state and selector the current slice was computed from. React calls
+    // getSnapshot repeatedly and loops forever (error #185) unless it gets the
+    // same value back while nothing has changed, and selectors such as
+    // `Object.values(...).sort()` build a new array on every call.
+    const lastStateRef = useRef<T | undefined>(undefined);
+    const lastSelectorRef = useRef<((state: T) => Slice) | undefined>(undefined);
     const selectorRef = useRef(selector);
     selectorRef.current = selector;
     const equalityFnRef = useRef(equalityFn);
     equalityFnRef.current = equalityFn;
 
     const getSnapshot = useCallback(() => {
+      if (lastStateRef.current === state && lastSelectorRef.current === selectorRef.current) {
+        return currentSliceRef.current as Slice;
+      }
       const nextSlice = selectorRef.current(state);
+      lastStateRef.current = state;
+      lastSelectorRef.current = selectorRef.current;
       if (currentSliceRef.current === undefined || !equalityFnRef.current(currentSliceRef.current, nextSlice)) {
         currentSliceRef.current = nextSlice;
       }
