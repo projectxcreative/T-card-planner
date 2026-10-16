@@ -1,81 +1,33 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import {
-  DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  MeasuringStrategy,
-  MouseSensor,
-  TouchSensor,
-  closestCorners,
-  pointerWithin,
-  rectIntersection,
-  useSensor,
-  useSensors,
-  type CollisionDetection,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent,
-  type Over,
-} from '@dnd-kit/core';
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { DndContext, DragOverlay, MeasuringStrategy } from '@dnd-kit/core';
 import Lane from './components/Lane';
 import CardPanel from './components/CardPanel';
 import TopBar from './components/TopBar';
-import SettingsDialog from './components/SettingsDialog';
+import SettingsDialog from './components/settings/SettingsDialog';
 import DayView from './components/DayView';
 import MonthView from './components/MonthView';
-import ProjectsView from './components/ProjectsView';
+import ProjectsView from './components/projects/ProjectsView';
 import ClientsView from './components/ClientsView';
 import BillingView from './components/BillingView';
 import { CardFace } from './components/TCard';
-import type { Action } from './store';
 import {
-  attachableCards,
   billingMonths,
-  byStage,
   cardsIn,
   cardsOfClient,
-  cardsOfProject,
   clientTotals,
-  projectsOfClient,
-  strandedEvents,
   laneOf,
-  load,
-  newCard,
-  newCardUpdate,
-  newCategory,
-  newClient,
-  newProject,
-  newUpdateCategory,
-  normalise,
-  reducer,
-  sameArrangement,
-  save,
+  projectsOfClient,
 } from './store';
 import {
   BACKLOG,
-  CATEGORY_PALETTE,
-  CLIENT_PALETTE,
-  DEFAULT_SETTINGS,
   STATUS_LABELS,
   categoryLabel,
-  type BoardState,
   type Card,
-  type CardUpdate,
-  type Category,
-  type CategoryId,
-  type Client,
   type LaneId,
-  type Project,
-  type Settings,
-  type UpdateCategory,
-  type ViewMode,
 } from './types';
 import { CategoriesProvider, useCategoryColours } from './categories';
 import { LookupsProvider } from './lookups';
 import {
-  addDays,
-  addMonths,
   formatDayName,
   formatDayNumber,
   formatFullDay,
@@ -85,7 +37,6 @@ import {
   isToday,
   isWeekend,
   monthGrid,
-  startOfMonth,
   startOfWeek,
   todayKey,
   weekKeys,
@@ -97,178 +48,80 @@ import { useAppUpdate } from './updates';
 import { effectiveConfig, useM365, usePublishing } from './m365';
 import { useCalendarFeed } from './feed';
 import { ConflictBar, OfflineBar } from './components/SyncBadge';
+import {
+  useBoard,
+  useBoardActions,
+  useCanUndo,
+  useClientList,
+  useProjectList,
+} from './store/boardStore';
+import { useSettings, useSettingsActions } from './store/settingsStore';
+import { useUIActions, useUIStore } from './store/uiStore';
+import { useBoardDnd } from './hooks/useBoardDnd';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
-const SETTINGS_KEY = 'tcard-planner.settings.v1';
-const HISTORY_LIMIT = 40;
-
-/** Long enough after a load or a sync for the board to be the board rather
- *  than whatever it was mid-pull. Nothing waits on it. */
 const SWEEP_DELAY_MS = 8000;
 
-/** Pointer position beats bounding-box overlap on a board this wide: a card is
- *  wider than the gap between columns, so rect-based hits drift a lane sideways.
- *  The rect strategies are only a fallback for keyboard drags and gaps. */
-const collisionDetection: CollisionDetection = (args) => {
-  const byPointer = pointerWithin(args);
-  if (byPointer.length > 0) return byPointer;
-  const byRect = rectIntersection(args);
-  return byRect.length > 0 ? byRect : closestCorners(args);
-};
-
-function loadSettings(): Settings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    const stored = raw ? (JSON.parse(raw) as Partial<Settings>) : {};
-    const preferDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-    return {
-      ...DEFAULT_SETTINGS,
-      theme: preferDark ? 'dark' : 'light',
-      ...stored,
-      // Settings written before the calendar existed have no `m365` at all.
-      m365: { ...DEFAULT_SETTINGS.m365, ...(stored.m365 ?? {}) },
-    };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-}
-
 export default function App() {
-  const [board, rawDispatch] = useReducer(reducer, undefined, load);
-  const [settings, setSettings] = useState<Settings>(loadSettings);
-  const [view, setView] = useState<ViewMode>('week');
-  /** One day the whole app is looking at; each view reads the week, day or
-   *  month around it, so switching views keeps your place. */
-  const [focus, setFocus] = useState(todayKey);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [openProject, setOpenProject] = useState<string | null>(null);
-  const [openClient, setOpenClient] = useState<string | null>(null);
-  /** Client ids the board is narrowed to; empty means all of them. Deliberately
-   *  not persisted — coming back to a filtered board you don't remember setting
-   *  is worse than setting it again. */
-  const [clientFilter, setClientFilter] = useState<string[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
-  const [past, setPast] = useState<BoardState[]>([]);
+  const board = useBoard((b) => b);
+  const boardActions = useBoardActions();
+  const canUndo = useCanUndo();
+
+  const settings = useSettings();
+  const settingsActions = useSettingsActions();
+
+  const ui = useUIStore((s) => s);
+  const uiActions = useUIActions();
+
   const searchRef = useRef<HTMLInputElement>(null);
-
-  /** Snapshot before anything a misclick would make expensive: a delete, a
-   *  roll-over, an import. Drags file their own entry; typing is left to the
-   *  editor's own undo. */
-  const snapshot = useCallback(() => setPast((stack) => [...stack, board].slice(-HISTORY_LIMIT)), [board]);
-
-  const undo = useCallback(() => {
-    const previous = past[past.length - 1];
-    if (!previous) return;
-    dispatch({ type: 'replace', state: previous });
-    setPast((stack) => stack.slice(0, -1));
-  }, [past]);
-
-  /* ---------- persistence ---------- */
-
-  useEffect(() => {
-    const timer = setTimeout(() => save(board), 200);
-    return () => clearTimeout(timer);
-  }, [board]);
+  const boardRef = useRef<HTMLElement>(null);
 
   useCategoryColours(board.categories);
 
-  // localStorage stays the local copy of record; the Worker keeps devices level.
-  const latestBoard = useRef(board);
-  latestBoard.current = board;
-
-  /**
-   * Swapping the whole board out strands every entry the old one published, so
-   * the ids are carried across before the old board is let go of — along with
-   * anything already queued on it. The incoming board has a queue of its own
-   * (usually empty), and letting it simply replace the old one would drop
-   * entries that are still sitting in a calendar with nothing pointing at them.
-   */
-  const swapBoard = useCallback((state: BoardState) => {
-    const previous = latestBoard.current;
-    const stranded = [...previous.orphanedEvents, ...strandedEvents(previous, state)];
-    // Always raw: adopting the server's board (or an import) isn't a local
-    // edit that needs blocking while offline — it's how the device catches up.
-    rawDispatch({ type: 'replace', state });
-    if (stranded.length > 0) rawDispatch({ type: 'orphanEvents', ids: stranded });
-  }, []);
-
-  const adoptRemote = swapBoard;
-  const sync = useSync(board, adoptRemote);
+  // Sync with Worker
+  const sync = useSync(board, boardActions.swapBoard);
   const update = useAppUpdate();
 
-  // The server can't be reached, so a local edit now would only desync
-  // further and leave you guessing what actually saved. Every board mutation
-  // goes through this one gate.
-  const locked = sync.status === 'offline';
-  const dispatch = useCallback(
-    (action: Action) => {
-      if (locked) return;
-      rawDispatch(action);
-    },
-    [locked],
-  );
+  // Offline no longer locks the board! Only an unresolved conflict pauses mutations.
+  const locked = sync.status === 'conflict';
 
-  /**
-   * Attachments follow the board's own connection.
-   *
-   * With nowhere to sync to, a file stays on the device that took it — which is
-   * the whole of how the board works offline, and no worse for files than for
-   * cards. The moment there is a Worker and a login, the queue of files added
-   * meanwhile goes up, and files added on another device can be fetched down.
-   */
+  // Remote file synchronisation
   const filesRemote = sync.status !== 'off' && sync.status !== 'unconfigured';
-
   useEffect(() => {
     setRemoteFiles(filesRemote);
   }, [filesRemote]);
 
-  /**
-   * Clears out files nothing points at any more — a card deleted, an image
-   * taken back out of a description.
-   *
-   * Once, a little after the board has settled, rather than on every edit: the
-   * board in hand has to be one the server agrees with before its idea of what
-   * is unused can be acted on, and a sweep that runs while you are still typing
-   * is a sweep racing the thing it is reading.
-   */
+  // Clean up unused file attachments
   const inStep = sync.status === 'idle' || sync.status === 'off';
-
   useEffect(() => {
     if (!inStep) return;
     const timer = setTimeout(() => {
       void flushUploads();
-      void sweepAttachments(referencedFileIds(latestBoard.current), { remote: filesRemote });
+      void sweepAttachments(referencedFileIds(board), { remote: filesRemote });
     }, SWEEP_DELAY_MS);
     return () => clearTimeout(timer);
-    // Deliberately not re-run on every edit: the board is read when it fires.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inStep, filesRemote]);
+  }, [inStep, filesRemote, board]);
 
+  // Derived calendar dates
+  const days = useMemo(
+    () => weekKeys(startOfWeek(ui.focus), settings.includeWeekend),
+    [ui.focus, settings.includeWeekend],
+  );
+  const weeks = useMemo(
+    () => monthGrid(ui.focus, settings.includeWeekend),
+    [ui.focus, settings.includeWeekend],
+  );
+
+  // Auto-scroll to today in Week view
   useEffect(() => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    document.documentElement.dataset.theme = settings.theme;
-    document.documentElement.dataset.skin = settings.skin;
-  }, [settings]);
-
-  /* ---------- derived ---------- */
-
-  const days = useMemo(() => weekKeys(startOfWeek(focus), settings.includeWeekend), [focus, settings.includeWeekend]);
-  const weeks = useMemo(() => monthGrid(focus, settings.includeWeekend), [focus, settings.includeWeekend]);
-
-  // On a phone only one column fits, and on a laptop a long week can overflow.
-  // Either way the useful column is today's, not the backlog on the far left.
-  const boardRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (view !== 'week') return;
+    if (ui.view !== 'week') return;
     const today = boardRef.current?.querySelector('.lane.is-today');
-    // Instant, not smooth: an animation here would fight a user who starts
-    // dragging or scrolling the moment the board appears.
     today?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
-  }, [focus, view]);
+  }, [ui.focus, ui.view]);
 
+  // Search and client filter
   const searchMatches = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = ui.searchQuery.trim().toLowerCase();
     if (!needle) return null;
     const found = new Set<string>();
     for (const card of Object.values(board.cards)) {
@@ -285,80 +138,53 @@ export default function App() {
       if (haystack.includes(needle)) found.add(card.id);
     }
     return found;
-  }, [query, board.cards, board.categories, board.projects, board.clients]);
+  }, [ui.searchQuery, board.cards, board.categories, board.projects, board.clients]);
 
-  /** The filter uses the same definition of a client's work as the Clients
-   *  view: their tagged cards, plus everything on their projects. */
   const filterMatches = useMemo(() => {
-    const wanted = clientFilter.filter((id) => board.clients[id]);
+    const wanted = ui.clientFilter.filter((id) => board.clients[id]);
     if (wanted.length === 0) return null;
     const found = new Set<string>();
-    for (const id of wanted) for (const { card } of cardsOfClient(board, id)) found.add(card.id);
+    for (const id of wanted) {
+      for (const { card } of cardsOfClient(board, id)) found.add(card.id);
+    }
     return found;
-  }, [board, clientFilter]);
+  }, [board, ui.clientFilter]);
 
-  // Two narrowings at once means both have to be satisfied, not either.
   const matches = useMemo(() => {
     if (!searchMatches) return filterMatches;
     if (!filterMatches) return searchMatches;
     return new Set([...searchMatches].filter((id) => filterMatches.has(id)));
   }, [filterMatches, searchMatches]);
 
-  const categoryCounts = useMemo(() => {
-    const counts: Record<CategoryId, number> = {};
-    for (const card of Object.values(board.cards)) counts[card.colour] = (counts[card.colour] ?? 0) + 1;
-    return counts;
-  }, [board.cards]);
+  const clientList = useClientList();
+  const projectList = useProjectList();
+  const months = useMemo(() => billingMonths(board), [board]);
+  const clientSums = useCallback((id: string) => clientTotals(board, id), [board]);
+  const clientProjects = useCallback((id: string) => projectsOfClient(board, id), [board]);
+  const clientCards = useCallback((id: string) => cardsOfClient(board, id), [board]);
 
-  const updateCategoryCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const card of Object.values(board.cards)) {
-      for (const update of card.updates) counts[update.categoryId] = (counts[update.categoryId] ?? 0) + 1;
-    }
-    return counts;
-  }, [board.cards]);
-
-  const clientCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const card of Object.values(board.cards)) for (const id of card.clients) counts[id] = (counts[id] ?? 0) + 1;
-    for (const project of Object.values(board.projects)) {
-      if (project.clientId) counts[project.clientId] = (counts[project.clientId] ?? 0) + 1;
-    }
-    return counts;
-  }, [board.cards, board.projects]);
-
-  const clientList = useMemo(
-    () => board.clientOrder.map((id) => board.clients[id]).filter(Boolean) as Client[],
-    [board.clientOrder, board.clients],
-  );
-
-  // What Settings has chosen may since have been deleted — falls back to
-  // whatever now sits first, the same way a card that lost its own category
-  // does, rather than handing out an id nothing recognises.
   const defaultCategoryId = useMemo(
     () => (board.categories[settings.defaultCategory] ? settings.defaultCategory : board.categoryOrder[0]),
     [board.categories, board.categoryOrder, settings.defaultCategory],
   );
 
-  // Pipeline order, so the list reads as a funnel and the stage headings drawn
-  // down it land on runs rather than on every other row.
-  const projectList = useMemo(() => Object.values(board.projects).sort(byStage), [board.projects]);
-
-  const openCard: Card | null = openId ? board.cards[openId] ?? null : null;
+  const openCard: Card | null = ui.openCardId ? board.cards[ui.openCardId] ?? null : null;
   const openLane = openCard ? laneOf(board, openCard.id) ?? BACKLOG : BACKLOG;
-  const activeCard = activeId ? board.cards[activeId] ?? null : null;
+
+  // Cleanup if opened entity was deleted
+  useEffect(() => {
+    if (ui.openCardId && !board.cards[ui.openCardId]) uiActions.setOpenCardId(null);
+  }, [ui.openCardId, board.cards, uiActions]);
 
   useEffect(() => {
-    if (openId && !board.cards[openId]) setOpenId(null);
-  }, [openId, board.cards]);
-
-  useEffect(() => {
-    setClientFilter((current) => {
+    uiActions.setClientFilter((current) => {
       const kept = current.filter((id) => board.clients[id]);
       return kept.length === current.length ? current : kept;
     });
-    setOpenClient((current) => (current && !board.clients[current] ? null : current));
-  }, [board.clients]);
+    if (ui.openClientId && !board.clients[ui.openClientId]) {
+      uiActions.setOpenClientId(null);
+    }
+  }, [board.clients, ui.openClientId, uiActions]);
 
   const lookups = useMemo(
     () => ({
@@ -381,28 +207,18 @@ export default function App() {
     ],
   );
 
-  /* ---------- the calendar ---------- */
-
-  // The device's own registration if it has been given one, else whatever this
-  // build ships with — so a plain visitor has nothing to set up.
+  // Microsoft 365 and Calendar Feed
   const m365Config = useMemo(() => effectiveConfig(settings.m365), [settings.m365]);
   const m365 = useM365(m365Config);
-  // The other direction: the board published as a calendar Outlook subscribes
-  // to. It lives on the Worker, so it needs a device that can reach it — and it
-  // is only ever looked at from Settings, so it is only read when that is open
-  // rather than costing every load a call nobody asked for.
-  const feed = useCalendarFeed((sync.signedIn || sync.hasToken) && showSettings);
+  const feed = useCalendarFeed((sync.signedIn || sync.hasToken) && ui.showSettings);
   const calendarReady = m365.status === 'connected';
 
-  // Whichever view is up decides the stretch of calendar worth holding.
   useEffect(() => {
-    if (view === 'day') m365.watch(focus, focus);
-    else if (view === 'month') m365.watch(weeks[0]?.[0] ?? focus, weeks.at(-1)?.at(-1) ?? focus);
-    else if (view === 'week') m365.watch(days[0], days[days.length - 1]);
-  }, [days, focus, m365, view, weeks]);
+    if (ui.view === 'day') m365.watch(ui.focus, ui.focus);
+    else if (ui.view === 'month') m365.watch(weeks[0]?.[0] ?? ui.focus, weeks.at(-1)?.at(-1) ?? ui.focus);
+    else if (ui.view === 'week') m365.watch(days[0], days[days.length - 1]);
+  }, [days, ui.focus, m365, ui.view, weeks]);
 
-  /** Only the cards the calendar has any say over: the ones ticked to publish,
-   *  and the ones that were and now need their entry taking away. */
   const publishable = useMemo(() => {
     const list: { card: Card; lane: LaneId }[] = [];
     for (const [lane, ids] of Object.entries(board.lanes)) {
@@ -414,389 +230,45 @@ export default function App() {
     return list;
   }, [board.cards, board.lanes]);
 
-  const patchCard = useCallback((id: string, patch: Partial<Card>) => dispatch({ type: 'update', id, patch }), []);
   const publishing = usePublishing(
     m365Config,
     calendarReady,
     publishable,
-    patchCard,
+    boardActions.patchCard,
     board.orphanedEvents,
-    useCallback((ids: string[]) => dispatch({ type: 'eventsRemoved', ids }), []),
+    (ids: string[]) => boardActions.dispatch({ type: 'eventsRemoved', ids }),
   );
 
-  /* ---------- card actions ---------- */
+  // Drag-and-drop
+  const dnd = useBoardDnd({
+    board,
+    dispatch: boardActions.dispatch,
+    snapshot: boardActions.snapshot,
+  });
 
-  const moveCard = useCallback((id: string, lane: LaneId) => dispatch({ type: 'move', id, lane }), []);
-
-  const quickAdd = useCallback(
-    (lane: LaneId, title: string) => {
-      const card = newCard(title, { colour: defaultCategoryId });
-      dispatch({ type: 'add', lane, card });
+  // Global Keyboard shortcuts
+  useKeyboardShortcuts({
+    showSettings: ui.showSettings,
+    onCloseSettings: () => uiActions.setShowSettings(false),
+    onCloseCard: () => uiActions.setOpenCardId(null),
+    canUndo: canUndo && !locked,
+    onUndo: boardActions.undo,
+    searchRef,
+    view: ui.view,
+    focus: ui.focus,
+    days,
+    onAddAndOpen: (lane) => {
+      const card = boardActions.addAndOpen(lane, defaultCategoryId);
+      uiActions.setOpenCardId(card.id);
     },
-    [defaultCategoryId],
-  );
-
-  const addAndOpen = useCallback(
-    (lane: LaneId) => {
-      const card = newCard('', { colour: defaultCategoryId });
-      dispatch({ type: 'add', lane, card });
-      setOpenId(card.id);
-    },
-    [defaultCategoryId],
-  );
-
-  /** From a card's right-click menu: the next card for the same work, without
-   *  hunting up the project it belongs to. Same project, same clients, its
-   *  own blank title and day — it lands right after the card it came from. */
-  const newCardFromCard = useCallback(
-    (id: string) => {
-      const source = board.cards[id];
-      if (!source) return;
-      const lane = laneOf(board, id) ?? BACKLOG;
-      const card = newCard('', {
-        colour: source.colour,
-        projectId: source.projectId,
-        clients: [...source.clients],
-      });
-      const index = (board.lanes[lane] ?? []).indexOf(id) + 1;
-      dispatch({ type: 'add', lane, card, index });
-      setOpenId(card.id);
-    },
-    [board],
-  );
-
-  const setCategory = useCallback(
-    (id: CategoryId, patch: Partial<Category>) => dispatch({ type: 'category', id, patch }),
-    [],
-  );
-
-  const addCategory = useCallback(
-    (label: string) => {
-      const colour = CATEGORY_PALETTE[board.categoryOrder.length % CATEGORY_PALETTE.length];
-      const { id, category } = newCategory(label, colour);
-      dispatch({ type: 'addCategory', id, category });
-    },
-    [board.categoryOrder.length],
-  );
-
-  const deleteCategory = useCallback(
-    (id: string) => {
-      snapshot();
-      dispatch({ type: 'deleteCategory', id });
-    },
-    [snapshot],
-  );
-
-  const resetCategories = useCallback(() => {
-    if (!window.confirm('Put every category label and colour back to the defaults?')) return;
-    snapshot();
-    dispatch({ type: 'resetCategories' });
-  }, [snapshot]);
-
-  /* ---------- update categories ---------- */
-
-  const setUpdateCategory = useCallback(
-    (id: string, patch: Partial<UpdateCategory>) => dispatch({ type: 'updateCategory', id, patch }),
-    [],
-  );
-
-  const addUpdateCategory = useCallback(
-    (label: string) => {
-      const colour = CATEGORY_PALETTE[board.updateCategoryOrder.length % CATEGORY_PALETTE.length];
-      const { id, category } = newUpdateCategory(label, colour);
-      dispatch({ type: 'addUpdateCategory', id, category });
-    },
-    [board.updateCategoryOrder.length],
-  );
-
-  const deleteUpdateCategory = useCallback(
-    (id: string) => {
-      snapshot();
-      dispatch({ type: 'deleteUpdateCategory', id });
-    },
-    [snapshot],
-  );
-
-  const resetUpdateCategories = useCallback(() => {
-    if (!window.confirm('Put every update category label and colour back to the defaults?')) return;
-    snapshot();
-    dispatch({ type: 'resetUpdateCategories' });
-  }, [snapshot]);
-
-  /* ---------- logged updates ---------- */
-
-  const addUpdate = useCallback(
-    (cardId: string, categoryId: string, minutes: number, note: string) => {
-      dispatch({ type: 'addUpdate', cardId, update: newCardUpdate(categoryId, minutes, note) });
-    },
-    [],
-  );
-
-  const patchUpdate = useCallback(
-    (cardId: string, updateId: string, patch: Partial<CardUpdate>) =>
-      dispatch({ type: 'patchUpdate', cardId, updateId, patch }),
-    [],
-  );
-
-  const deleteUpdate = useCallback(
-    (cardId: string, updateId: string) => dispatch({ type: 'deleteUpdate', cardId, updateId }),
-    [],
-  );
-
-  /* ---------- projects and clients ---------- */
-
-  const createProject = useCallback(
-    (title: string) => {
-      const project = newProject(title, { colour: defaultCategoryId });
-      dispatch({ type: 'addProject', project });
-      setOpenProject(project.id);
-    },
-    [defaultCategoryId],
-  );
-
-  const patchProject = useCallback(
-    (id: string, patch: Partial<Project>) => dispatch({ type: 'updateProject', id, patch }),
-    [],
-  );
-
-  const deleteProject = useCallback(
-    (id: string) => {
-      snapshot();
-      dispatch({ type: 'deleteProject', id });
-    },
-    [snapshot],
-  );
-
-  /** A card made inside a project inherits its category and its clients, and
-   *  lands on whichever day the row was set to. */
-  const addProjectCard = useCallback(
-    (projectId: string, title: string, day: LaneId) => {
-      const project = board.projects[projectId];
-      const card = newCard(title, {
-        projectId,
-        colour: project?.colour ?? defaultCategoryId,
-        // A card can still wear several clients; it just starts with its
-        // project's one, which is the answer nearly every time.
-        clients: project?.clientId ? [project.clientId] : [],
-      });
-      dispatch({ type: 'add', lane: day, card });
-    },
-    [board.projects, defaultCategoryId],
-  );
-
-  const addClient = useCallback(
-    (name: string) => {
-      const colour = CLIENT_PALETTE[board.clientOrder.length % CLIENT_PALETTE.length];
-      dispatch({ type: 'addClient', client: newClient(name, colour) });
-    },
-    [board.clientOrder.length],
-  );
-
-  const deleteClient = useCallback(
-    (id: string) => {
-      snapshot();
-      dispatch({ type: 'deleteClient', id });
-    },
-    [snapshot],
-  );
-
-  const projectCards = useCallback((projectId: string) => cardsOfProject(board, projectId), [board]);
-  const projectSpare = useCallback((projectId: string) => attachableCards(board, projectId), [board]);
-
-  /** Claiming a card that already exists for a project. Only the project moves:
-   *  the card keeps its day, its hours and its own client tags. */
-  const attachProjectCard = useCallback(
-    (cardId: string, projectId: string) => patchCard(cardId, { projectId }),
-    [patchCard],
-  );
-  const months = useMemo(() => billingMonths(board), [board]);
-  const clientProjects = useCallback((clientId: string) => projectsOfClient(board, clientId), [board]);
-  const clientCards = useCallback((clientId: string) => cardsOfClient(board, clientId), [board]);
-  const clientSums = useCallback((clientId: string) => clientTotals(board, clientId), [board]);
-
-  /** From a client's project straight to that project, which is where you go
-   *  next often enough that hunting for it in the other tab is a nuisance. */
-  const openProjectFrom = useCallback((id: string) => {
-    setOpenProject(id);
-    setView('projects');
-  }, []);
-
-  /* ---------- import / export ---------- */
-
-  const exportBoard = useCallback(() => {
-    const blob = new Blob([JSON.stringify(board, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `t-card-planner-${todayKey()}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }, [board]);
-
-  const importBoard = useCallback(async (file: File) => {
-    if (locked) {
-      window.alert("You're offline, so the board can't be replaced right now — the server couldn't be told about it. Try again once sync is back.");
-      return;
-    }
-    try {
-      const state = normalise(JSON.parse(await file.text()));
-      const count = Object.keys(state.cards).length;
-      if (!window.confirm(`Replace the current board with ${count} card${count === 1 ? '' : 's'} from ${file.name}?`)) return;
-      snapshot();
-      swapBoard(state);
-      setOpenId(null);
-    } catch {
-      window.alert(`Couldn't read that file — it doesn't look like a T-Card Planner export.`);
-    }
-  }, [locked, snapshot, swapBoard]);
-
-  /* ---------- keyboard ---------- */
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const typing =
-        !!target &&
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
-
-      if (event.key === 'Escape') {
-        if (typing) return;
-        // The dialog handles its own Escape; this catches the case where focus
-        // has wandered off it, so the key still means "close the top thing".
-        if (showSettings) setShowSettings(false);
-        else setOpenId(null);
-        return;
-      }
-      // The dialog is modal: its own shortcuts only, until it closes.
-      if (showSettings) return;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !typing) {
-        event.preventDefault();
-        undo();
-        return;
-      }
-      if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
-
-      if (event.key === '/') {
-        event.preventDefault();
-        searchRef.current?.focus();
-      } else if (event.key.toLowerCase() === 'n') {
-        event.preventDefault();
-        const today = todayKey();
-        if (view === 'day') addAndOpen(focus);
-        else addAndOpen(days.includes(today) ? today : days[0]);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [addAndOpen, days, focus, showSettings, undo, view]);
-
-  /* ---------- drag and drop ---------- */
-
-  const sensors = useSensors(
-    // A small threshold keeps a plain click on a card as "open", not "drag".
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    // On touch a short press starts the drag, so a plain swipe still scrolls
-    // the column. Tolerance lets a finger wobble during that press.
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
-  const laneFromOver = useCallback(
-    (over: Over | null): LaneId | undefined => {
-      if (!over) return undefined;
-      const data = over.data.current as { type?: string; lane?: LaneId } | undefined;
-      if (data?.lane) return data.lane;
-      const id = String(over.id);
-      return id.startsWith('lane:') ? id.slice(5) : laneOf(board, id);
-    },
-    [board],
-  );
-
-  // The board is edited live while dragging, so keep the pre-drag board to
-  // revert to on cancel and to file as the single undo entry for the whole drag.
-  const beforeDrag = useRef<BoardState | null>(null);
-
-  const endDrag = (revert: boolean) => {
-    const before = beforeDrag.current;
-    beforeDrag.current = null;
-    setActiveId(null);
-    if (revert && before && !sameArrangement(before, board)) dispatch({ type: 'replace', state: before });
-    return before;
-  };
-
-  const onDragStart = (event: DragStartEvent) => {
-    beforeDrag.current = board;
-    setActiveId(String(event.active.id));
-  };
-
-  /** Where in the target lane a drop lands. Dropped on a card, it takes that
-   *  card's place; dropped on the column itself, the reducer decides — which
-   *  means above the done pile rather than under it. */
-  const indexFromOver = (over: Over, to: LaneId, below: boolean): number | undefined => {
-    const data = over.data.current as { type?: string } | undefined;
-    if (data?.type !== 'card') return undefined;
-    const ids = board.lanes[to] ?? [];
-    const at = ids.indexOf(String(over.id));
-    return at >= 0 ? at + (below ? 1 : 0) : undefined;
-  };
-
-  /** Cross-lane hops happen live, so the gap opens in the column you're over. */
-  const onDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-    const id = String(active.id);
-    const from = laneOf(board, id);
-    const to = laneFromOver(over);
-    if (!from || !to || from === to) return;
-
-    const dragged = active.rect.current.translated;
-    const below = dragged ? dragged.top > over.rect.top + over.rect.height / 2 : false;
-    dispatch({ type: 'move', id, lane: to, index: indexFromOver(over, to, below) });
-  };
-
-  const onDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    const id = String(active.id);
-    const to = over ? laneFromOver(over) : undefined;
-
-    // Released over nothing: put the card back rather than leaving it in
-    // whichever column it happened to be hovering.
-    if (!over || !to) {
-      endDrag(true);
-      return;
-    }
-    const before = endDrag(false);
-
-    const action: Action = { type: 'move', id, lane: to, index: indexFromOver(over, to, false) };
-    const settled = reducer(board, action);
-    if (before && !sameArrangement(before, settled)) setPast((stack) => [...stack, before].slice(-HISTORY_LIMIT));
-    if (settled !== board) dispatch(action);
-  };
-
-  /* ---------- view plumbing ---------- */
-
-  const shift = useCallback(
-    (steps: number) => {
-      setFocus((current) => {
-        if (view === 'day') return addDays(current, steps);
-        if (view === 'month') return startOfMonth(addMonths(startOfMonth(current), steps));
-        return addDays(current, steps * 7);
-      });
-    },
-    [view],
-  );
-
-  const openDay = useCallback((day: LaneId) => {
-    setFocus(day);
-    setView('day');
-  }, []);
+  });
 
   const rangeLabel =
-    view === 'day' ? formatFullDay(focus) : view === 'month' ? formatMonth(focus) : formatWeekRange(days);
-
-  const cardsForDay = useCallback((day: LaneId) => cardsIn(board, day), [board]);
-
-  /* ---------- render ---------- */
+    ui.view === 'day'
+      ? formatFullDay(ui.focus)
+      : ui.view === 'month'
+        ? formatMonth(ui.focus)
+        : formatWeekRange(days);
 
   const banner = m365.error ?? publishing.error;
 
@@ -805,22 +277,22 @@ export default function App() {
       <LookupsProvider value={lookups}>
         <div className={openCard && settings.cardSurface === 'drawer' ? 'app has-drawer' : 'app'}>
           <TopBar
-            view={view}
-            onView={setView}
+            view={ui.view}
+            onView={uiActions.setView}
             rangeLabel={rangeLabel}
-            onShift={shift}
-            onToday={() => setFocus(todayKey())}
-            query={query}
-            onQuery={setQuery}
+            onShift={uiActions.shiftFocus}
+            onToday={uiActions.resetFocusToToday}
+            query={ui.searchQuery}
+            onQuery={uiActions.setSearchQuery}
             settings={settings}
-            onSettings={(patch) => setSettings((current) => ({ ...current, ...patch }))}
-            onOpenSettings={() => setShowSettings(true)}
-            canUndo={past.length > 0 && !locked}
-            onUndo={undo}
+            onSettings={settingsActions.updateSettings}
+            onOpenSettings={() => uiActions.setShowSettings(true)}
+            canUndo={canUndo && !locked}
+            onUndo={boardActions.undo}
             searchRef={searchRef}
             clients={clientList}
-            clientFilter={clientFilter}
-            onClientFilter={setClientFilter}
+            clientFilter={ui.clientFilter}
+            onClientFilter={uiActions.setClientFilter}
             sync={sync}
             update={update}
           />
@@ -835,15 +307,15 @@ export default function App() {
           )}
 
           <DndContext
-            sensors={locked ? [] : sensors}
-            collisionDetection={collisionDetection}
+            sensors={locked ? [] : dnd.sensors}
+            collisionDetection={dnd.collisionDetection}
             measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
-            onDragStart={onDragStart}
-            onDragOver={onDragOver}
-            onDragEnd={onDragEnd}
-            onDragCancel={() => endDrag(true)}
+            onDragStart={dnd.onDragStart}
+            onDragOver={dnd.onDragOver}
+            onDragEnd={dnd.onDragEnd}
+            onDragCancel={dnd.onDragCancel}
           >
-            {view === 'week' && (
+            {ui.view === 'week' && (
               <main className="board" ref={boardRef}>
                 <Lane
                   id={BACKLOG}
@@ -854,10 +326,13 @@ export default function App() {
                   isBacklog
                   capacity={settings.capacity}
                   locked={locked}
-                  onOpen={setOpenId}
-                  onQuickAdd={quickAdd}
-                  onNewFromProject={newCardFromCard}
-                  onPatch={patchCard}
+                  onOpen={uiActions.setOpenCardId}
+                  onQuickAdd={(lane, title) => boardActions.quickAdd(lane, title, defaultCategoryId)}
+                  onNewFromProject={(id) => {
+                    const card = boardActions.newCardFromCard(id);
+                    if (card) uiActions.setOpenCardId(card.id);
+                  }}
+                  onPatch={boardActions.patchCard}
                 />
 
                 {days.map((day) => (
@@ -874,98 +349,87 @@ export default function App() {
                     capacity={settings.capacity}
                     locked={locked}
                     events={m365.events.get(day)}
-                    onOpen={setOpenId}
-                    onQuickAdd={quickAdd}
-                    onOpenDay={openDay}
-                    onNewFromProject={newCardFromCard}
-                    onPatch={patchCard}
+                    onOpen={uiActions.setOpenCardId}
+                    onQuickAdd={(lane, title) => boardActions.quickAdd(lane, title, defaultCategoryId)}
+                    onOpenDay={uiActions.openDay}
+                    onNewFromProject={(id) => {
+                      const card = boardActions.newCardFromCard(id);
+                      if (card) uiActions.setOpenCardId(card.id);
+                    }}
+                    onPatch={boardActions.patchCard}
                   />
                 ))}
               </main>
             )}
 
-            {view === 'month' && (
+            {ui.view === 'month' && (
               <main className="board is-month">
                 <MonthView
-                  anchor={focus}
+                  anchor={ui.focus}
                   weeks={weeks}
-                  cardsFor={cardsForDay}
+                  cardsFor={(day) => cardsIn(board, day)}
                   events={m365.events}
                   matches={matches}
-                  onOpen={setOpenId}
-                  onOpenDay={openDay}
+                  onOpen={uiActions.setOpenCardId}
+                  onOpenDay={uiActions.openDay}
                 />
               </main>
             )}
 
             <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }}>
-              {activeCard ? <CardFace card={activeCard} dragging /> : null}
+              {dnd.activeCard ? <CardFace card={dnd.activeCard} dragging /> : null}
             </DragOverlay>
           </DndContext>
 
-          {view === 'day' && (
+          {ui.view === 'day' && (
             <main className="board is-day">
               <DayView
-                day={focus}
-                cards={cardsIn(board, focus)}
-                events={m365.events.get(focus) ?? []}
+                day={ui.focus}
+                cards={cardsIn(board, ui.focus)}
+                events={m365.events.get(ui.focus) ?? []}
                 settings={settings}
                 calendarReady={calendarReady}
                 locked={locked}
-                onOpen={setOpenId}
-                onPatch={patchCard}
-                onQuickAdd={quickAdd}
+                onOpen={uiActions.setOpenCardId}
+                onPatch={boardActions.patchCard}
+                onQuickAdd={(lane, title) => boardActions.quickAdd(lane, title, defaultCategoryId)}
               />
             </main>
           )}
 
-          {view === 'projects' && (
+          {ui.view === 'projects' && (
             <main className="board is-projects">
-              <ProjectsView
-                projects={projectList}
-                cardsOf={projectCards}
-                selected={openProject}
-                onSelect={setOpenProject}
-                onCreate={createProject}
-                onPatch={patchProject}
-                onDelete={deleteProject}
-                onOpenCard={setOpenId}
-                onAddCard={addProjectCard}
-                onMoveCard={moveCard}
-                attachable={projectSpare}
-                onAttachCard={attachProjectCard}
-                locked={locked}
-              />
+              <ProjectsView />
             </main>
           )}
 
-          {view === 'billing' && (
+          {ui.view === 'billing' && (
             <main className="board is-billing">
               <BillingView
                 months={months}
                 clients={board.clients}
-                onMonth={(id, invoiceMonth) => patchProject(id, { invoiceMonth })}
-                onOpenProject={openProjectFrom}
+                onMonth={(id, invoiceMonth) => boardActions.patchProject(id, { invoiceMonth })}
+                onOpenProject={uiActions.openProjectFrom}
                 locked={locked}
               />
             </main>
           )}
 
-          {view === 'clients' && (
+          {ui.view === 'clients' && (
             <main className="board is-clients">
               <ClientsView
                 clients={clientList}
                 totals={clientSums}
                 projectsOf={clientProjects}
                 cardsOf={clientCards}
-                selected={openClient}
-                onSelect={setOpenClient}
-                onCreate={addClient}
-                onPatch={(id, patch) => dispatch({ type: 'updateClient', id, patch })}
-                onDelete={deleteClient}
-                onOpenCard={setOpenId}
-                onOpenProject={openProjectFrom}
-                onMoveCard={moveCard}
+                selected={ui.openClientId}
+                onSelect={uiActions.setOpenClientId}
+                onCreate={boardActions.addClient}
+                onPatch={boardActions.patchClient}
+                onDelete={boardActions.deleteClient}
+                onOpenCard={uiActions.setOpenCardId}
+                onOpenProject={uiActions.openProjectFrom}
+                onMoveCard={boardActions.moveCard}
                 locked={locked}
               />
             </main>
@@ -979,51 +443,22 @@ export default function App() {
               surface={settings.cardSurface}
               calendarReady={calendarReady}
               locked={locked}
-              onPatch={patchCard}
-              onMove={moveCard}
-              onDuplicate={(id) => dispatch({ type: 'duplicate', id })}
-              onDelete={(id) => {
-                snapshot();
-                dispatch({ type: 'delete', id });
-                setOpenId(null);
-              }}
-              onAddUpdate={addUpdate}
-              onPatchUpdate={patchUpdate}
-              onDeleteUpdate={deleteUpdate}
-              onClose={() => setOpenId(null)}
+              onPatch={boardActions.patchCard}
+              onMove={boardActions.moveCard}
+              onDuplicate={boardActions.duplicateCard}
+              onDelete={boardActions.deleteCard}
+              onAddUpdate={boardActions.addCardUpdate}
+              onPatchUpdate={boardActions.patchCardUpdate}
+              onDeleteUpdate={boardActions.deleteCardUpdate}
+              onClose={() => uiActions.setOpenCardId(null)}
             />
           )}
 
-          {showSettings && (
+          {ui.showSettings && (
             <SettingsDialog
-              categories={board.categories}
-              categoryOrder={board.categoryOrder}
-              counts={categoryCounts}
-              onCategory={setCategory}
-              onAddCategory={addCategory}
-              onDeleteCategory={deleteCategory}
-              onResetCategories={resetCategories}
-              updateCategories={board.updateCategories}
-              updateCategoryOrder={board.updateCategoryOrder}
-              updateCounts={updateCategoryCounts}
-              onUpdateCategory={setUpdateCategory}
-              onAddUpdateCategory={addUpdateCategory}
-              onDeleteUpdateCategory={deleteUpdateCategory}
-              onResetUpdateCategories={resetUpdateCategories}
-              clients={clientList}
-              clientCounts={clientCounts}
-              onAddClient={addClient}
-              onClient={(id, patch) => dispatch({ type: 'updateClient', id, patch })}
-              onDeleteClient={deleteClient}
-              locked={locked}
-              settings={settings}
-              defaultCategory={defaultCategoryId}
-              onSettings={(patch) => setSettings((current) => ({ ...current, ...patch }))}
               m365={m365}
               feed={feed}
-              onExport={exportBoard}
-              onImport={importBoard}
-              onClose={() => setShowSettings(false)}
+              onClose={() => uiActions.setShowSettings(false)}
             />
           )}
         </div>

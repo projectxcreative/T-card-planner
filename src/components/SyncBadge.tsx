@@ -136,19 +136,18 @@ export default function SyncBadge({ sync }: { sync: Sync }) {
 }
 
 /** Shown across the top of the board while the server can't be reached.
- *  Editing is blocked meanwhile, so this is the thing that explains why. */
+ *  Edits continue locally and will sync automatically when reconnected. */
 export function OfflineBar({ sync }: { sync: Sync }) {
   if (sync.status !== 'offline') return null;
 
   return (
-    <div className="conflict is-offline" role="alert">
+    <div className="conflict is-offline" role="status">
       <span>
-        Can't reach the server, so editing is paused — nothing typed here would make it to your other
-        devices right now. It'll pick back up as soon as the connection is back.
+        You're working offline — edits are saved locally on this device and will sync automatically when connection is restored.
       </span>
       <div className="conflict-actions">
         <button type="button" className="ghost accent" onClick={sync.syncNow}>
-          Try again
+          Retry sync
         </button>
       </div>
     </div>
