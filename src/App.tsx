@@ -38,7 +38,6 @@ import {
   isWeekend,
   monthGrid,
   startOfWeek,
-  todayKey,
   weekKeys,
 } from './dates';
 import { summarise } from './cardText';
@@ -53,7 +52,6 @@ import {
   useBoardActions,
   useCanUndo,
   useClientList,
-  useProjectList,
 } from './store/boardStore';
 import { useSettings, useSettingsActions } from './store/settingsStore';
 import { useUIActions, useUIStore } from './store/uiStore';
@@ -157,7 +155,6 @@ export default function App() {
   }, [filterMatches, searchMatches]);
 
   const clientList = useClientList();
-  const projectList = useProjectList();
   const months = useMemo(() => billingMonths(board), [board]);
   const clientSums = useCallback((id: string) => clientTotals(board, id), [board]);
   const clientProjects = useCallback((id: string) => projectsOfClient(board, id), [board]);

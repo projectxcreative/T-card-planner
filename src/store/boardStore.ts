@@ -31,7 +31,6 @@ import {
   normalise,
   projectsOfClient,
   reducer,
-  sameArrangement,
   save,
   strandedEvents,
   type Action,

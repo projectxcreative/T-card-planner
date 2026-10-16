@@ -29,10 +29,8 @@ import ProjectGroup, { type Group, type GroupSums } from './ProjectGroup';
 import ProjectDetail from './ProjectDetail';
 import { tally, type Tally } from './ProjectStats';
 import {
-  useAttachableCards,
   useBoard,
   useBoardActions,
-  useCardsOfProject,
   useProjectList,
 } from '../../store/boardStore';
 import { useUIActions, useUIStore } from '../../store/uiStore';

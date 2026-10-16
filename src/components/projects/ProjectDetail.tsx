@@ -1,19 +1,17 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import {
-  MONTH_CHOICES,
   PROJECT_STAGES,
   STAGE_GROUP,
   STAGE_LABELS,
   categoryLabel,
-  formatMonthKey,
   type Attachment,
   type Card,
   type CategoryId,
-  type Client,
   type LaneId,
   type Project,
   type ProjectStage,
 } from '../../types';
+import { formatMonthKey, monthChoices } from '../../dates';
 import Attachments, { useAttachmentActions } from '../Attachments';
 import { useCategories } from '../../categories';
 import { useLookups } from '../../lookups';
@@ -24,6 +22,7 @@ import ProjectStats, { type Tally } from './ProjectStats';
 
 const RichText = lazy(() => import('../RichText'));
 const DESCRIPTION_DEBOUNCE_MS = 300;
+const MONTH_CHOICES = monthChoices(12, 12);
 
 interface ProjectDetailProps {
   project: Project;
