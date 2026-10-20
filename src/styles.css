@@ -1232,7 +1232,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .chip.is-on { background: var(--chip); border-color: var(--chip); color: #fff; }
 :root[data-theme='dark'] .chip.is-on { color: #0f141b; }
 
-.chip-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-picker { display: flex; flex-wrap: wrap; gap: 4px; }
+/* A picker can hold every client, so its chips run tighter than the ones on a card. */
+.chip-picker .chip { padding: 1px 7px; font-size: var(--t-micro); font-weight: 500; }
+.chip-picker .chip.is-on { font-weight: 600; }
 
 .field-note { margin: 0; font-size: var(--t-body); color: var(--text-faint); }
 
