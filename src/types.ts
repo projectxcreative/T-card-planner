@@ -321,7 +321,7 @@ export const DEFAULT_SETTINGS: Settings = {
   skin: 'default',
   defaultCategory: 'slate',
   showDescription: true,
-  cardSurface: 'drawer',
+  cardSurface: 'modal',
   dayStart: 8,
   dayEnd: 19,
   m365: { tenant: 'common', clientId: '' },

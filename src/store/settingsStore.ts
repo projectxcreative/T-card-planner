@@ -2,18 +2,28 @@ import { DEFAULT_SETTINGS, type Settings } from '../types';
 import { createStore } from './createStore';
 
 const SETTINGS_KEY = 'tcard-planner.settings.v1';
+// Set once the card surface has been moved over to the modal default, so a
+// later choice of the drawer in Settings sticks.
+const MODAL_DEFAULT_KEY = 'tcard-planner.modal-default.v1';
 
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     const stored = raw ? (JSON.parse(raw) as Partial<Settings>) : {};
+    const moveToModal = !localStorage.getItem(MODAL_DEFAULT_KEY);
+    if (moveToModal) delete stored.cardSurface;
     const preferDark = typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-    return {
+    const settings: Settings = {
       ...DEFAULT_SETTINGS,
       theme: preferDark ? 'dark' : 'light',
       ...stored,
       m365: { ...DEFAULT_SETTINGS.m365, ...(stored.m365 ?? {}) },
     };
+    if (moveToModal) {
+      if (raw) saveSettings(settings);
+      localStorage.setItem(MODAL_DEFAULT_KEY, '1');
+    }
+    return settings;
   } catch {
     return DEFAULT_SETTINGS;
   }
