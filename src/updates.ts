@@ -24,6 +24,19 @@ const CHECK_MS = 30 * 60_000;
 
 /** A new build is installed and waiting for the page to let it take over. */
 let waiting = false;
+/** Whether anyone has touched this page yet. Until they have, there is nothing
+ *  a reload could cost them — which is what makes a refresh land on the latest
+ *  build: the browser finds it while the page loads, and the page takes it
+ *  before anyone starts typing, rather than sitting on the old one behind an
+ *  Update button. */
+let touched = false;
+if (typeof window !== 'undefined') {
+  const mark = () => {
+    touched = true;
+  };
+  window.addEventListener('pointerdown', mark, { once: true, capture: true });
+  window.addEventListener('keydown', mark, { once: true, capture: true });
+}
 /** Hands the page to the waiting build, which reloads onto it. */
 let takeIt = () => {};
 const listeners = new Set<(ready: boolean) => void>();
@@ -64,7 +77,7 @@ if (typeof window !== 'undefined') {
     onNeedRefresh() {
       waiting = true;
       announce();
-      if (document.visibilityState === 'hidden') takeIt();
+      if (document.visibilityState === 'hidden' || !touched) takeIt();
     },
     onRegisteredSW(_url, registration) {
       if (registration) watch(registration);
