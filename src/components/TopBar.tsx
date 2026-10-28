@@ -1,6 +1,14 @@
 import SyncBadge from './SyncBadge';
 import ClientFilter from './ClientFilter';
 import { VIEWS, VIEW_LABELS, type Client, type Settings, type ViewMode } from '../types';
+import { useCard } from '../store/boardStore';
+import {
+  discardTimer,
+  pauseTimer,
+  resumeTimer,
+  stopAndLogTimer,
+  useActiveTimer,
+} from '../store/timerStore';
 import type { Sync } from '../sync';
 import type { AppUpdate } from '../updates';
 
@@ -39,6 +47,9 @@ interface Props {
   onOpenSettings: () => void;
   canUndo: boolean;
   onUndo: () => void;
+  pastUnfinishedCount?: number;
+  onRolloverPast?: () => void;
+  onSelectCard?: (cardId: string) => void;
   searchRef: React.RefObject<HTMLInputElement | null>;
   clients: Client[];
   clientFilter: string[];
@@ -48,7 +59,32 @@ interface Props {
 }
 
 export default function TopBar(props: Props) {
-  const { view, onView, rangeLabel, onShift, onToday, query, onQuery, settings, onSettings, onOpenSettings, canUndo, onUndo, searchRef, clients, clientFilter, onClientFilter, sync, update } = props;
+  const {
+    view,
+    onView,
+    rangeLabel,
+    onShift,
+    onToday,
+    query,
+    onQuery,
+    settings,
+    onSettings,
+    onOpenSettings,
+    canUndo,
+    onUndo,
+    pastUnfinishedCount = 0,
+    onRolloverPast,
+    onSelectCard,
+    searchRef,
+    clients,
+    clientFilter,
+    onClientFilter,
+    sync,
+    update,
+  } = props;
+
+  const timer = useActiveTimer();
+  const timedCard = useCard(timer.cardId);
 
   // Projects and clients aren't stretches of time, so there is nothing for the
   // arrows to step over while they're on screen.
@@ -97,6 +133,17 @@ export default function TopBar(props: Props) {
           </button>
           <span className="weekrange">{rangeLabel}</span>
 
+          {pastUnfinishedCount > 0 && onRolloverPast && (
+            <button
+              type="button"
+              className="ghost accent rollover-btn"
+              onClick={onRolloverPast}
+              title={`Roll ${pastUnfinishedCount} unfinished card${pastUnfinishedCount === 1 ? '' : 's'} from past days into Today`}
+            >
+              ↪ Roll over {pastUnfinishedCount}
+            </button>
+          )}
+
           {showsWeekend && (
             <button
               type="button"
@@ -128,6 +175,47 @@ export default function TopBar(props: Props) {
       )}
 
       <div className="topbar-tools">
+        {timer.cardId && (
+          <div className={`topbar-timer ${timer.running ? 'is-running' : 'is-paused'}`} role="region" aria-label="Active timer">
+            <span className="topbar-timer-dot" aria-hidden="true" />
+            <button
+              type="button"
+              className="topbar-timer-card"
+              onClick={() => timer.cardId && onSelectCard?.(timer.cardId)}
+              title="Open timed card"
+            >
+              {timedCard?.title || 'Untitled card'}
+            </button>
+            <span className="topbar-timer-clock">{timer.formatted}</span>
+            <button
+              type="button"
+              className="ghost topbar-timer-btn"
+              onClick={() => (timer.running ? pauseTimer() : resumeTimer())}
+              title={timer.running ? 'Pause timer' : 'Resume timer'}
+              aria-label={timer.running ? 'Pause timer' : 'Resume timer'}
+            >
+              {timer.running ? '⏸' : '▶'}
+            </button>
+            <button
+              type="button"
+              className="ghost accent topbar-timer-btn"
+              onClick={() => stopAndLogTimer()}
+              title="Stop timer and log work update"
+            >
+              ■ Log
+            </button>
+            <button
+              type="button"
+              className="ghost topbar-timer-btn"
+              onClick={() => discardTimer()}
+              title="Discard timer without logging"
+              aria-label="Discard timer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         <button
           type="button"
           className="ghost"
@@ -169,7 +257,7 @@ export default function TopBar(props: Props) {
           type="button"
           className="ghost icon"
           onClick={onOpenSettings}
-          title="Categories, clients, the week, backups"
+          title="Team, boards, categories, clients, calendar, backups"
           aria-label="Settings"
         >
           <SettingsIcon />
@@ -189,7 +277,7 @@ export default function TopBar(props: Props) {
           </button>
         )}
 
-        <SyncBadge sync={sync} />
+        <SyncBadge sync={sync} onOpenSettings={onOpenSettings} />
       </div>
      </div>
     </header>

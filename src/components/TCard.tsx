@@ -3,11 +3,17 @@ import { createPortal } from 'react-dom';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Card, LaneId, Status } from '../types';
-import { STATUSES, STATUS_LABELS, categoryLabel } from '../types';
+import {
+  STATUSES,
+  STATUS_LABELS,
+  categoryLabel,
+  totalUpdateMinutes,
+} from '../types';
 import { useCategories } from '../categories';
 import { useClientList, useLookups } from '../lookups';
-import { formatEstimate, summarise } from '../cardText';
-import { formatTime } from '../dates';
+import { formatEstimate, formatMinutes, summarise } from '../cardText';
+import { formatDayNumber, formatTime, todayKey } from '../dates';
+import { startTimer, stopAndLogTimer, timerStore } from '../store/timerStore';
 
 /** The client tags a card or project carries, as a row of coloured chips. */
 export function ClientChips({ ids, compact }: { ids: string[]; compact?: boolean }) {
@@ -38,13 +44,20 @@ interface FaceProps {
 /** The card itself: a coloured header strip over an inset body — the T. */
 export const CardFace = memo(function CardFace({ card, dimmed, dragging }: FaceProps) {
   const categories = useCategories();
-  const { projects, showDescription } = useLookups();
+  const { projects, users, showDescription } = useLookups();
   const { excerpt, checked, total } = summarise(card.description);
   const estimate = formatEstimate(card.estimate);
+  const loggedMins = totalUpdateMinutes(card.updates);
   const project = card.projectId ? projects[card.projectId] : undefined;
+  const assignee = card.assigneeId ? users.find((u) => u.id === card.assigneeId) : undefined;
+  const today = todayKey();
+  const isOverdue = Boolean(card.dueDate && card.status !== 'done' && card.dueDate < today);
+  const isDueToday = Boolean(card.dueDate && card.status !== 'done' && card.dueDate === today);
+
   const classes = ['tcard', `c-${card.colour}`, `s-${card.status}`];
   if (dimmed) classes.push('is-dimmed');
   if (dragging) classes.push('is-dragging');
+  if (isOverdue) classes.push('is-overdue');
 
   return (
     <article className={classes.join(' ')}>
@@ -64,9 +77,27 @@ export const CardFace = memo(function CardFace({ card, dimmed, dragging }: FaceP
         {showDescription && excerpt && <p className="tcard-excerpt">{excerpt}</p>}
         <div className="tcard-meta">
           <span className={`pill p-${card.status}`}>{STATUS_LABELS[card.status]}</span>
+          {card.dueDate && (
+            <span
+              className={`pill p-due ${isOverdue ? 'is-overdue' : isDueToday ? 'is-due-today' : ''}`}
+              title={`Due ${card.dueDate}`}
+            >
+              ⚑ {isOverdue ? `Overdue · ${formatDayNumber(card.dueDate)}` : isDueToday ? 'Due today' : `Due ${formatDayNumber(card.dueDate)}`}
+            </span>
+          )}
           {total > 0 && (
             <span className={checked === total ? 'pill p-tasks is-complete' : 'pill p-tasks'}>
               ☑ {checked}/{total}
+            </span>
+          )}
+          {loggedMins > 0 && (
+            <span className="pill p-logged" title={`${formatMinutes(loggedMins)} logged across ${card.updates.length} update${card.updates.length === 1 ? '' : 's'}`}>
+              ⏱ {formatMinutes(loggedMins)}
+            </span>
+          )}
+          {assignee && (
+            <span className="pill p-assignee" title={`Assigned to ${assignee.name} (${assignee.email})`}>
+              @{assignee.name.split(' ')[0]}
             </span>
           )}
           <ClientChips ids={card.clients} compact />
@@ -83,7 +114,8 @@ interface MenuPos {
 
 /**
  * The right-click menu for a card: a shortcut to start the next card for the
- * same project, and every status one click away without opening the card.
+ * same project, start/stop a work timer, and every status one click away
+ * without opening the card.
  *
  * Rendered through a portal because a dragged ancestor carries a CSS
  * `transform`, which would otherwise become the containing block for this
@@ -104,6 +136,8 @@ function CardMenu({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [placed, setPlaced] = useState(pos);
+  const activeTimerCardId = timerStore.useStore((s) => s.cardId);
+  const isTimingThis = activeTimerCardId === card.id;
 
   useEffect(() => {
     const onDown = (event: MouseEvent) => {
@@ -141,11 +175,24 @@ function CardMenu({
       className="cardmenu"
       role="menu"
       style={{ left: placed.x, top: placed.y }}
-      // Portalled content still bubbles through the *React* tree, not just the
-      // DOM one — left unstopped, a click here would go on to reach the
-      // card's own onClick and reopen the wrong one.
       onClick={(event) => event.stopPropagation()}
     >
+      <button
+        type="button"
+        role="menuitem"
+        className="cardmenu-item"
+        onClick={() => {
+          if (isTimingThis) {
+            stopAndLogTimer();
+          } else {
+            startTimer(card.id);
+          }
+          onClose();
+        }}
+      >
+        {isTimingThis ? '■ Stop & log timer' : '▶ Start timer on card'}
+      </button>
+
       <button
         type="button"
         role="menuitem"

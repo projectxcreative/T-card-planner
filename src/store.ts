@@ -9,6 +9,7 @@ import {
   DEFAULT_UPDATE_CATEGORIES,
   DEFAULT_UPDATE_CATEGORY_ORDER,
   EXPENSE_LABEL_MAX,
+  MILESTONE_LABEL_MAX,
   FILE_ID,
   LABEL_MAX,
   MIN_CATEGORIES,
@@ -18,6 +19,8 @@ import {
   BILLING_BUCKETS,
   PROJECT_STAGES,
   billingBucket,
+  cardLoggedHours,
+  chargeableExpenses,
   isLost,
   projectTotal,
   defaultCategories,
@@ -34,16 +37,21 @@ import {
   type Expense,
   type LaneId,
   type Project,
+  type ProjectMilestone,
   type ProjectStage,
   type Status,
   type UpdateCategories,
   type UpdateCategory,
-} from './types';
-import { isHexColour } from './colour';
-import { addDays, thisMonthKey, todayKey } from './dates';
+} from './types.ts';
+import { isHexColour } from './colour.ts';
+import { addDays, thisMonthKey, todayKey } from './dates.ts';
 
 const STORAGE_KEY = 'tcard-planner.board.v1';
 const VERSION = 2;
+
+export function storageKeyFor(workspaceId = 'default'): string {
+  return !workspaceId || workspaceId === 'default' ? STORAGE_KEY : `${STORAGE_KEY}:${workspaceId}`;
+}
 
 export function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -75,6 +83,8 @@ export function newCard(title: string, patch: Partial<Card> = {}): Card {
     status: 'todo',
     estimate: 0,
     start: null,
+    dueDate: null,
+    assigneeId: null,
     projectId: null,
     clients: [],
     publish: false,
@@ -96,8 +106,15 @@ export function newUpdateCategory(label: string, colour: string): { id: string; 
   return { id: uid(), category: { label, colour } };
 }
 
-export function newCardUpdate(categoryId: string, minutes: number, note = ''): CardUpdate {
-  return { id: uid(), categoryId, minutes, note: note.slice(0, UPDATE_NOTE_MAX), createdAt: new Date().toISOString() };
+export function newCardUpdate(categoryId: string, minutes: number, note = '', date = todayKey()): CardUpdate {
+  return {
+    id: uid(),
+    categoryId,
+    minutes,
+    note: note.slice(0, UPDATE_NOTE_MAX),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayKey(),
+    createdAt: new Date().toISOString(),
+  };
 }
 
 export function newProject(title: string, patch: Partial<Project> = {}): Project {
@@ -107,9 +124,11 @@ export function newProject(title: string, patch: Partial<Project> = {}): Project
     title,
     description: '',
     value: 0,
+    budgetHours: 0,
     stage: 'enquiry',
     clientId: null,
     invoiceMonth: null,
+    milestones: [],
     colour: 'blue',
     expenses: [],
     attachments: [],
@@ -130,6 +149,7 @@ export type Action =
   | { type: 'delete'; id: string }
   | { type: 'duplicate'; id: string }
   | { type: 'move'; id: string; lane: LaneId; index?: number }
+  | { type: 'rolloverPast'; today?: LaneId; fromLane?: LaneId }
   | { type: 'category'; id: CategoryId; patch: Partial<Category> }
   | { type: 'addCategory'; id: string; category: Category }
   | { type: 'deleteCategory'; id: string }
@@ -163,9 +183,27 @@ export function cardsIn(state: BoardState, lane: LaneId): Card[] {
   return (state.lanes[lane] ?? []).map((id) => state.cards[id]).filter(Boolean);
 }
 
+/** Unfinished cards sitting on past days (`lane < today` and not backlog). */
+export function pastUnfinishedCards(
+  state: BoardState,
+  today = todayKey(),
+  fromLane?: LaneId,
+): { card: Card; lane: LaneId }[] {
+  const found: { card: Card; lane: LaneId }[] = [];
+  for (const [lane, ids] of Object.entries(state.lanes)) {
+    if (lane === BACKLOG || lane >= today) continue;
+    if (fromLane && lane !== fromLane) continue;
+    for (const id of ids) {
+      const card = state.cards[id];
+      if (card && card.status !== 'done') found.push({ card, lane });
+    }
+  }
+  return found.sort(byLane);
+}
+
 /** Day order, with the backlog last rather than sorting before "b…". */
 function byLane(a: { lane: LaneId }, b: { lane: LaneId }): number {
-  const key = (lane: LaneId) => (lane === BACKLOG ? '￿' : lane);
+  const key = (lane: LaneId) => (lane === BACKLOG ? '' : lane);
   return key(a.lane) < key(b.lane) ? -1 : key(a.lane) > key(b.lane) ? 1 : 0;
 }
 
@@ -190,11 +228,6 @@ export function cardsOfProject(state: BoardState, projectId: string): { card: Ca
 
 /**
  * The cards a project could pull in: everything not already on it.
- *
- * Unattached cards come first, because that is nearly always what you are
- * after — a card typed straight onto the board before the project existed.
- * Cards already spoken for follow, so moving one across is possible but has to
- * be a decision, taken with the project it would leave named on the row.
  */
 export function attachableCards(state: BoardState, projectId: string): { card: Card; lane: LaneId }[] {
   return scan(state, (card) => card.projectId !== projectId).sort(
@@ -220,11 +253,6 @@ export function byStage(a: Project, b: Project): number {
 
 /**
  * A client's work: cards tagged with them, plus every card on their projects.
- *
- * The second half matters. A card created inside a project inherits its client
- * tags, but one assigned to the project later does not — and either way a card
- * on an Acme project is Acme's work. Counting only the tagged ones would quietly
- * under-report what a client is costing you.
  */
 export function cardsOfClient(state: BoardState, clientId: string): { card: Card; lane: LaneId }[] {
   const theirs = new Set(projectsOfClient(state, clientId).map((project) => project.id));
@@ -235,8 +263,17 @@ export function cardsOfClient(state: BoardState, clientId: string): { card: Card
 }
 
 export interface BillingRow {
+  /** Unique draggable id (`project.id`, or `ms:${project.id}:${milestone.id}`). */
+  rowId: string;
   project: Project;
+  milestone?: ProjectMilestone;
   bucket: BillingBucket | null;
+  /** Amount billed on this row (milestone amount + chargeable expenses on first milestone, or full projectTotal). */
+  amount: number;
+  /** Chargeable expenses included in this row's amount. */
+  chargeableAmount: number;
+  /** Effective invoice month (`YYYY-MM` or null). */
+  invoiceMonth: string | null;
 }
 
 export interface BillingMonth {
@@ -250,21 +287,47 @@ export interface BillingMonth {
 }
 
 /**
- * Projects by the month they are to be billed in, oldest first, with the
- * unassigned ones last.
- *
- * Archived projects are left out entirely — putting one away is saying you have
- * stopped counting it, and that has to mean the invoice list too, or the totals
- * here and the ones on the projects list disagree.
+ * Projects (and staged project milestones) grouped by the month they are to be
+ * billed in, oldest first, with unassigned ones last.
  */
 export function billingMonths(state: BoardState): BillingMonth[] {
   const months = new Map<string | null, BillingRow[]>();
+  const pushRow = (key: string | null, row: BillingRow) => {
+    const list = months.get(key);
+    if (list) list.push(row);
+    else months.set(key, [row]);
+  };
+
   for (const project of Object.values(state.projects)) {
     if (project.archived) continue;
-    const key = project.invoiceMonth;
-    const rows = months.get(key);
-    if (rows) rows.push({ project, bucket: billingBucket(project.stage) });
-    else months.set(key, [{ project, bucket: billingBucket(project.stage) }]);
+    const chargeable = chargeableExpenses(project);
+
+    if (project.milestones && project.milestones.length > 0) {
+      project.milestones.forEach((ms, idx) => {
+        const extraChargeable = idx === 0 ? chargeable : 0;
+        const bucket = isLost(project.stage) ? null : ms.status;
+        const key = ms.invoiceMonth ?? project.invoiceMonth;
+        pushRow(key, {
+          rowId: `ms:${project.id}:${ms.id}`,
+          project,
+          milestone: ms,
+          bucket,
+          amount: ms.amount + extraChargeable,
+          chargeableAmount: extraChargeable,
+          invoiceMonth: key,
+        });
+      });
+    } else {
+      const key = project.invoiceMonth;
+      pushRow(key, {
+        rowId: project.id,
+        project,
+        bucket: billingBucket(project.stage),
+        amount: projectTotal(project),
+        chargeableAmount: chargeable,
+        invoiceMonth: key,
+      });
+    }
   }
 
   const empty = () =>
@@ -276,13 +339,9 @@ export function billingMonths(state: BoardState): BillingMonth[] {
       let total = 0;
       for (const row of rows) {
         if (!row.bucket) continue; // lost: listed, but worth nothing
-        // What the invoice comes to, not just the fee: an expense marked
-        // chargeable is billed on to the client, so it belongs in the month's
-        // figures exactly as it does in the projects list.
-        const value = projectTotal(row.project);
         byBucket[row.bucket].count += 1;
-        byBucket[row.bucket].value += value;
-        total += value;
+        byBucket[row.bucket].value += row.amount;
+        total += row.amount;
       }
       rows.sort((x, y) => byStage(x.project, y.project));
       return { key, rows, total, byBucket };
@@ -295,9 +354,7 @@ export function billingMonths(state: BoardState): BillingMonth[] {
     });
 }
 
-/** What a client is worth and how much of it has been done. Value comes from
- *  their projects, each at what they are billed for — chargeable expenses
- *  included; hours come from their cards, which is a wider net. */
+/** What a client is worth and how much of it has been done. */
 export function clientTotals(
   state: BoardState,
   clientId: string,
@@ -305,7 +362,6 @@ export function clientTotals(
   const projects = projectsOfClient(state, clientId);
   const cards = cardsOfClient(state, clientId);
   return {
-    // A lost project is worth nothing; counting it would overstate the client.
     value: projects
       .filter((project) => !project.archived && !isLost(project.stage))
       .reduce((sum, project) => sum + projectTotal(project), 0),
@@ -313,7 +369,7 @@ export function clientTotals(
     cards: cards.length,
     done: cards.filter(({ card }) => card.status === 'done').length,
     planned: cards.reduce((sum, { card }) => sum + (card.status === 'done' ? 0 : card.estimate), 0),
-    logged: cards.reduce((sum, { card }) => sum + (card.status === 'done' ? card.estimate : 0), 0),
+    logged: cards.reduce((sum, { card }) => sum + cardLoggedHours(card), 0),
   };
 }
 
@@ -431,6 +487,8 @@ export function reducer(state: BoardState, action: Action): BoardState {
         status: source.status,
         estimate: source.estimate,
         start: source.start,
+        dueDate: source.dueDate,
+        assigneeId: source.assigneeId,
         projectId: source.projectId,
         clients: [...source.clients],
         // The same files, not copies of them: an attachment is stored once and
@@ -455,6 +513,21 @@ export function reducer(state: BoardState, action: Action): BoardState {
       const index = action.index ?? (card.status === 'done' ? undefined : firstDoneIndex(state, action.lane));
       const next = { ...state, lanes: place(state.lanes, action.id, action.lane, index) };
       return sameArrangement(state, next) ? state : next;
+    }
+
+    case 'rolloverPast': {
+      const targetDay = action.today ?? todayKey();
+      const toRoll = pastUnfinishedCards(state, targetDay).filter(
+        ({ lane }) => !action.fromLane || lane === action.fromLane,
+      );
+      if (toRoll.length === 0) return state;
+      let lanes = state.lanes;
+      for (const { card } of toRoll) {
+        const at = (lanes[targetDay] ?? []).findIndex((id) => state.cards[id]?.status === 'done');
+        const index = at === -1 ? (lanes[targetDay] ?? []).length : at;
+        lanes = place(lanes, card.id, targetDay, index);
+      }
+      return sameArrangement(state, { ...state, lanes }) ? state : { ...state, lanes };
     }
 
     case 'category': {
@@ -728,12 +801,16 @@ function normaliseCardUpdates(input: unknown, updateCategories: UpdateCategories
     const minutes = Number.isFinite(value.minutes) ? Math.max(0, Number(value.minutes)) : 0;
     const categoryId = typeof value.categoryId === 'string' && updateCategories[value.categoryId] ? value.categoryId : order[0];
     if (!categoryId) continue;
+    const createdAt = typeof value.createdAt === 'string' ? value.createdAt : new Date().toISOString();
+    const dateFromCreated = /^\d{4}-\d{2}-\d{2}/.test(createdAt) ? createdAt.slice(0, 10) : todayKey();
+    const date = typeof value.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.date) ? value.date : dateFromCreated;
     updates.push({
       id: typeof value.id === 'string' && value.id ? value.id : uid(),
       categoryId,
       minutes,
       note: typeof value.note === 'string' ? value.note.slice(0, UPDATE_NOTE_MAX) : '',
-      createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date().toISOString(),
+      date,
+      createdAt,
     });
   }
   return updates;
@@ -814,6 +891,26 @@ function normaliseExpenses(input: unknown): Expense[] {
   return expenses;
 }
 
+function normaliseMilestones(input: unknown): ProjectMilestone[] {
+  if (!Array.isArray(input)) return [];
+  const milestones: ProjectMilestone[] = [];
+  for (const value of input as Partial<ProjectMilestone>[]) {
+    if (!value || typeof value !== 'object') continue;
+    const label = typeof value.label === 'string' ? value.label.slice(0, MILESTONE_LABEL_MAX) : '';
+    const amount = Number.isFinite(value.amount) ? Math.max(0, Number(value.amount)) : 0;
+    const invoiceMonth = typeof value.invoiceMonth === 'string' && /^\d{4}-\d{2}$/.test(value.invoiceMonth) ? value.invoiceMonth : null;
+    const status = BILLING_BUCKETS.includes(value.status as BillingBucket) ? (value.status as BillingBucket) : 'todo';
+    milestones.push({
+      id: typeof value.id === 'string' && value.id ? value.id : uid(),
+      label,
+      amount,
+      invoiceMonth,
+      status,
+    });
+  }
+  return milestones;
+}
+
 function normaliseProjects(
   input: unknown,
   clients: Record<string, Client>,
@@ -830,9 +927,11 @@ function normaliseProjects(
       title: value.title,
       description: typeof value.description === 'string' ? value.description : '',
       value: Number.isFinite(value.value) ? Math.max(0, Number(value.value)) : 0,
+      budgetHours: Number.isFinite(value.budgetHours) ? Math.max(0, Number(value.budgetHours)) : 0,
       // Projects that predate the pipeline are work you already have on.
       stage: PROJECT_STAGES.includes(value.stage as ProjectStage) ? (value.stage as ProjectStage) : 'active',
       invoiceMonth: typeof value.invoiceMonth === 'string' && /^\d{4}-\d{2}$/.test(value.invoiceMonth) ? value.invoiceMonth : null,
+      milestones: normaliseMilestones(value.milestones),
       clientId: oneClient(value, clients),
       colour: typeof value.colour === 'string' && categories[value.colour] ? value.colour : categoryOrder[0],
       expenses: normaliseExpenses(value.expenses),
@@ -877,6 +976,8 @@ export function normalise(input: unknown): BoardState {
       status: (value.status ?? 'todo') as Status,
       estimate: Number.isFinite(value.estimate) ? Number(value.estimate) : 0,
       start: normaliseStart(value.start),
+      dueDate: typeof value.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.dueDate) ? value.dueDate : null,
+      assigneeId: typeof value.assigneeId === 'string' && value.assigneeId ? value.assigneeId : null,
       projectId: typeof value.projectId === 'string' && projects[value.projectId] ? value.projectId : null,
       clients: Array.isArray(value.clients) ? value.clients.filter((c): c is string => typeof c === 'string' && !!clients[c]) : [],
       publish: value.publish === true,
@@ -926,9 +1027,9 @@ export function normalise(input: unknown): BoardState {
   };
 }
 
-export function load(): BoardState {
+export function load(workspaceId = 'default'): BoardState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKeyFor(workspaceId));
     if (!raw) return seedBoard();
     return normalise(JSON.parse(raw));
   } catch {
@@ -936,9 +1037,9 @@ export function load(): BoardState {
   }
 }
 
-export function save(state: BoardState): void {
+export function save(state: BoardState, workspaceId = 'default'): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(storageKeyFor(workspaceId), JSON.stringify(state));
   } catch {
     // Quota or private-mode failures shouldn't take the board down.
   }

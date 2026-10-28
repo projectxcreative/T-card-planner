@@ -15,6 +15,15 @@ import { useCategories } from '../categories';
 import { useLookups } from '../lookups';
 import { formatMinutes } from '../cardText';
 import { addDays, formatFullDay, formatTime, todayKey } from '../dates';
+import {
+  discardTimer,
+  pauseTimer,
+  resumeTimer,
+  startTimer,
+  stopAndLogTimer,
+  updateTimerDraft,
+  useActiveTimer,
+} from '../store/timerStore';
 
 // The editor pulls in ProseMirror; keep it out of the first paint.
 const RichText = lazy(() => import('./RichText'));
@@ -61,7 +70,7 @@ export interface CardPanelProps {
   onMove: (id: string, lane: LaneId) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
-  onAddUpdate: (cardId: string, categoryId: string, minutes: number, note: string) => void;
+  onAddUpdate: (cardId: string, categoryId: string, minutes: number, note: string, date?: string) => void;
   onPatchUpdate: (cardId: string, updateId: string, patch: Partial<CardUpdate>) => void;
   onDeleteUpdate: (cardId: string, updateId: string) => void;
   onClose: () => void;
@@ -112,9 +121,9 @@ function useGrowToFit(ref: React.RefObject<HTMLTextAreaElement | null>, value: s
 }
 
 /**
- * Discrete logged work: what kind it was, and how long it took, kept apart
- * from the card's own rough `estimate` — a shoot's capture, its edit and its
- * export can each get their own line rather than one blurred number.
+ * Discrete logged work: what kind it was, when it happened, and how long it took,
+ * kept apart from the card's own rough `estimate` — a shoot's capture, its edit
+ * and its export can each get their own line rather than one blurred number.
  */
 function UpdatesSection({
   card,
@@ -125,7 +134,7 @@ function UpdatesSection({
 }: {
   card: Card;
   locked?: boolean;
-  onAddUpdate: (cardId: string, categoryId: string, minutes: number, note: string) => void;
+  onAddUpdate: (cardId: string, categoryId: string, minutes: number, note: string, date?: string) => void;
   onPatchUpdate: (cardId: string, updateId: string, patch: Partial<CardUpdate>) => void;
   onDeleteUpdate: (cardId: string, updateId: string) => void;
 }) {
@@ -133,6 +142,9 @@ function UpdatesSection({
   const [categoryId, setCategoryId] = useState(updateCategoryOrder[0] ?? '');
   const [minutes, setMinutes] = useState(30);
   const [note, setNote] = useState('');
+  const [date, setDate] = useState(() => todayKey());
+  const timer = useActiveTimer();
+  const isTimingThis = timer.cardId === card.id;
 
   // The list can change out from under an open card — a category deleted in
   // Settings on another device — so the draft is never left pointing at one
@@ -142,20 +154,88 @@ function UpdatesSection({
   }, [categoryId, updateCategories, updateCategoryOrder]);
 
   const total = totalUpdateMinutes(card.updates);
-  const sorted = [...card.updates].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  const sorted = [...card.updates].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    return a.createdAt < b.createdAt ? -1 : 1;
+  });
 
   const add = () => {
     if (!categoryId || minutes <= 0) return;
-    onAddUpdate(card.id, categoryId, minutes, note.trim());
+    onAddUpdate(card.id, categoryId, minutes, note.trim(), date || todayKey());
     setNote('');
   };
 
   return (
     <div className="field">
-      <span className="field-label">
-        Updates
-        {total > 0 && <span className="field-total">{formatMinutes(total)} logged</span>}
-      </span>
+      <div className="field-label-row">
+        <span className="field-label">
+          Updates &amp; time log
+          {total > 0 && <span className="field-total">{formatMinutes(total)} logged</span>}
+        </span>
+        {!isTimingThis && !locked && (
+          <button
+            type="button"
+            className="ghost accent timer-start-btn"
+            onClick={() => startTimer(card.id, categoryId)}
+            title="Start a live work timer for this card"
+          >
+            ▶ Start timer
+          </button>
+        )}
+      </div>
+
+      {isTimingThis && (
+        <div className={`card-timer-box ${timer.running ? 'is-running' : 'is-paused'}`}>
+          <div className="card-timer-top">
+            <span className="topbar-timer-dot" aria-hidden="true" />
+            <strong className="card-timer-clock">{timer.formatted}</strong>
+            <select
+              className="upd-category"
+              aria-label="Timer category"
+              value={timer.categoryId || categoryId}
+              onChange={(e) => updateTimerDraft({ categoryId: e.target.value })}
+            >
+              {updateCategoryOrder.map((id) => (
+                <option key={id} value={id}>
+                  {updateCategoryLabel(updateCategories, id)}
+                </option>
+              ))}
+            </select>
+            <div className="card-timer-actions">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => (timer.running ? pauseTimer() : resumeTimer())}
+              >
+                {timer.running ? '⏸ Pause' : '▶ Resume'}
+              </button>
+              <button
+                type="button"
+                className="ghost accent"
+                onClick={() => stopAndLogTimer()}
+              >
+                ■ Stop &amp; log
+              </button>
+              <button
+                type="button"
+                className="ghost danger"
+                onClick={() => discardTimer()}
+                title="Discard timer"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          <input
+            type="text"
+            className="upd-note"
+            placeholder="What are you working on? (saved when you stop)"
+            maxLength={UPDATE_NOTE_MAX}
+            value={timer.note}
+            onChange={(e) => updateTimerDraft({ note: e.target.value })}
+          />
+        </div>
+      )}
 
       {sorted.length > 0 && (
         <ul className="upd-list">
@@ -179,6 +259,16 @@ function UpdatesSection({
                   </option>
                 ))}
               </select>
+              <input
+                type="date"
+                className="upd-date"
+                aria-label="Update date"
+                value={update.date || todayKey()}
+                disabled={locked}
+                onChange={(event) =>
+                  onPatchUpdate(card.id, update.id, { date: event.target.value || todayKey() })
+                }
+              />
               <input
                 type="number"
                 className="upd-minutes"
@@ -233,6 +323,14 @@ function UpdatesSection({
             ))}
           </select>
           <input
+            type="date"
+            className="upd-date"
+            aria-label="New update's date"
+            value={date}
+            disabled={locked}
+            onChange={(event) => setDate(event.target.value || todayKey())}
+          />
+          <input
             type="number"
             className="upd-minutes"
             aria-label="New update's minutes"
@@ -270,7 +368,7 @@ function UpdatesSection({
 function CardBody(props: CardPanelProps) {
   const { card, lane, calendarReady, locked, onPatch, onMove, onAddUpdate, onPatchUpdate, onDeleteUpdate } = props;
   const categories = useCategories();
-  const { projects, clients, clientOrder, categoryOrder } = useLookups();
+  const { projects, clients, clientOrder, categoryOrder, users } = useLookups();
   const [html, setHtml] = useState(card.description);
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
@@ -359,25 +457,42 @@ function CardBody(props: CardPanelProps) {
         </div>
       </div>
 
-      <label className="field">
-        <span className="field-label">Category</span>
-        {/* A named list beats eight unlabelled swatches: the colour is the
-            shorthand, but you shouldn't have to remember which is which. */}
-        <span className={`picker c-${card.colour}`}>
-          <span className="picker-dot" aria-hidden="true" />
-          <select
-            className="picker-select"
-            value={card.colour}
-            onChange={(event) => onPatch(card.id, { colour: event.target.value as CategoryId })}
-          >
-            {categoryOrder.map((id) => (
-              <option key={id} value={id}>
-                {categoryLabel(categories, id)}
-              </option>
-            ))}
-          </select>
-        </span>
-      </label>
+      <div className="field-row">
+        <label className="field">
+          <span className="field-label">Category</span>
+          <span className={`picker c-${card.colour}`}>
+            <span className="picker-dot" aria-hidden="true" />
+            <select
+              className="picker-select"
+              value={card.colour}
+              onChange={(event) => onPatch(card.id, { colour: event.target.value as CategoryId })}
+            >
+              {categoryOrder.map((id) => (
+                <option key={id} value={id}>
+                  {categoryLabel(categories, id)}
+                </option>
+              ))}
+            </select>
+          </span>
+        </label>
+
+        {(users.length > 0 || card.assigneeId) && (
+          <label className="field">
+            <span className="field-label">Assignee</span>
+            <select
+              value={card.assigneeId ?? ''}
+              onChange={(event) => onPatch(card.id, { assigneeId: event.target.value || null })}
+            >
+              <option value="">Unassigned</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
 
       <label className="field">
         <span className="field-label">Project</span>
@@ -454,6 +569,29 @@ function CardBody(props: CardPanelProps) {
             title={lane === BACKLOG ? 'Put the card on a day first' : 'Where it sits on the day view'}
             onChange={(event) => onPatch(card.id, { start: fromTimeValue(event.target.value) })}
           />
+        </label>
+      </div>
+
+      <div className="field-row">
+        <label className="field">
+          <span className="field-label">Due date</span>
+          <div className="due-input-row">
+            <input
+              type="date"
+              value={card.dueDate ?? ''}
+              onChange={(event) => onPatch(card.id, { dueDate: event.target.value || null })}
+            />
+            {card.dueDate && (
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => onPatch(card.id, { dueDate: null })}
+                title="Clear due date"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </label>
       </div>
 

@@ -2,24 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 import type { Sync, SyncStatus } from '../sync';
 
 const LABELS: Record<SyncStatus, string> = {
-  off: 'Sync off',
-  unconfigured: 'Set up',
-  unauthorised: 'Bad token',
+  off: 'Sign in',
+  unconfigured: 'Set up admin',
+  unauthorised: 'Sign in',
   'signed-out': 'Signed out',
-  idle: 'Logged in',
+  idle: 'Synced',
   saving: 'Saving…',
   offline: 'Offline',
   conflict: 'Conflict',
 };
 
 const DETAIL: Record<SyncStatus, string> = {
-  off: 'This device keeps the board in its own browser storage. Add your sync token to share it with your other devices.',
-  unconfigured: 'The Worker is running but has no login set up yet — neither Cloudflare Access nor a BOARD_TOKEN secret.',
-  unauthorised: "The server didn't accept this token. Check it against the BOARD_TOKEN secret on the Worker.",
-  'signed-out': 'Your Cloudflare Access session has ended. Sign in again and the board picks up where it left off — nothing on this device is lost meanwhile.',
+  off: 'Sign in to sync your board across devices and collaborate with your team. Local changes are always saved on this device.',
+  unconfigured: 'Create your administrator account to enable in-app login, user management, and cloud sync.',
+  unauthorised: 'Your session or token was not accepted. Sign in below to reconnect.',
+  'signed-out': 'Your session has ended. Sign in again to pick up where you left off — local edits are safe.',
   idle: 'Up to date with the server.',
-  saving: 'Sending your latest changes.',
-  offline: "Can't reach the server. Your changes are saved on this device and will go up when it's back.",
+  saving: 'Sending your latest changes…',
+  offline: "Can't reach the server. Your changes are saved on this device and will sync when connection returns.",
   conflict: 'This board also changed somewhere else.',
 };
 
@@ -32,9 +32,22 @@ function agoLabel(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
-export default function SyncBadge({ sync }: { sync: Sync }) {
+export default function SyncBadge({
+  sync,
+  onOpenSettings,
+}: {
+  sync: Sync;
+  onOpenSettings?: () => void;
+}) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState('');
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [showTokenMode, setShowTokenMode] = useState(false);
+  const [tokenDraft, setTokenDraft] = useState('');
+  const [newBoardName, setNewBoardName] = useState('');
+  const [newBoardKind, setNewBoardKind] = useState<'team' | 'personal'>('personal');
+  const [addingBoard, setAddingBoard] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,6 +66,16 @@ export default function SyncBadge({ sync }: { sync: Sync }) {
     };
   }, [open]);
 
+  const activeWorkspace =
+    sync.workspaces.find((w) => w.id === sync.activeWorkspaceId) ?? sync.workspaces[0];
+
+  const badgeLabel =
+    sync.signedIn && sync.user
+      ? sync.status === 'saving'
+        ? 'Saving…'
+        : `${activeWorkspace?.name ?? 'Board'} · ${sync.user.name.split(' ')[0]}`
+      : LABELS[sync.status];
+
   return (
     <div className="sync" ref={wrapRef}>
       <button
@@ -63,72 +86,247 @@ export default function SyncBadge({ sync }: { sync: Sync }) {
         title={DETAIL[sync.status]}
       >
         <span className="sync-dot" aria-hidden="true" />
-        <span className="sync-label">{LABELS[sync.status]}</span>
+        <span className="sync-label">{badgeLabel}</span>
       </button>
 
       {open && (
-        <div className="sync-pop" role="dialog" aria-label="Sync settings">
+        <div className="sync-pop" role="dialog" aria-label="Account & workspace settings">
+          {/* Workspace Switcher */}
+          <div className="sync-section">
+            <div className="sync-section-head">
+              <span className="sync-section-title">Workspace board</span>
+              <button
+                type="button"
+                className="ghost sync-mini-btn"
+                onClick={() => setAddingBoard((v) => !v)}
+              >
+                {addingBoard ? 'Cancel' : '+ New board'}
+              </button>
+            </div>
+            <div className="sync-workspaces">
+              {sync.workspaces.map((ws) => (
+                <button
+                  key={ws.id}
+                  type="button"
+                  className={`sync-ws-item ${ws.id === sync.activeWorkspaceId ? 'is-active' : ''}`}
+                  onClick={() => {
+                    sync.switchWorkspace(ws.id);
+                  }}
+                >
+                  <span className="sync-ws-name">{ws.name}</span>
+                  <span className="sync-ws-kind">{ws.kind === 'personal' ? 'Personal' : 'Team'}</span>
+                </button>
+              ))}
+            </div>
+            {addingBoard && (
+              <form
+                className="sync-new-board"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (!newBoardName.trim()) return;
+                  await sync.createWorkspace(newBoardName.trim(), newBoardKind);
+                  setNewBoardName('');
+                  setAddingBoard(false);
+                }}
+              >
+                <input
+                  type="text"
+                  className="sync-input"
+                  placeholder="Board name (e.g. Personal, Studio)"
+                  value={newBoardName}
+                  onChange={(e) => setNewBoardName(e.target.value)}
+                />
+                <div className="sync-actions">
+                  <select
+                    className="sync-select"
+                    value={newBoardKind}
+                    onChange={(e) => setNewBoardKind(e.target.value as 'team' | 'personal')}
+                  >
+                    <option value="personal">Personal board</option>
+                    <option value="team">Team board</option>
+                  </select>
+                  <button type="submit" className="ghost accent">
+                    Create
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          <hr className="sync-divider" />
+
           <p className="sync-detail">{DETAIL[sync.status]}</p>
 
           {sync.status === 'idle' && sync.lastSyncedAt && (
             <p className="sync-detail dim">Last saved to the server {agoLabel(sync.lastSyncedAt)}.</p>
           )}
 
-          {sync.email && (
-            <p className="sync-detail dim">
-              Signed in as <strong className="sync-who">{sync.email}</strong>.
-            </p>
-          )}
-
-          {sync.status === 'signed-out' ? (
-            <div className="sync-actions">
-              <button type="button" className="ghost accent" onClick={sync.signIn}>
-                Sign in again
-              </button>
-            </div>
-          ) : sync.signedIn ? (
-            <div className="sync-actions">
-              <button type="button" className="ghost" onClick={() => { sync.syncNow(); setOpen(false); }}>
-                Sync now
-              </button>
-              <button type="button" className="ghost danger" onClick={sync.signOut}>
-                Sign out
-              </button>
+          {sync.signedIn && sync.user ? (
+            <div className="sync-user-box">
+              <div className="sync-user-info">
+                <span className="sync-user-avatar">
+                  {sync.user.name.slice(0, 2).toUpperCase()}
+                </span>
+                <div>
+                  <div className="sync-who">
+                    {sync.user.name}{' '}
+                    <span className="sync-role-pill">{sync.user.role}</span>
+                  </div>
+                  <div className="sync-detail dim">{sync.user.email}</div>
+                </div>
+              </div>
+              <div className="sync-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => {
+                    sync.syncNow();
+                    setOpen(false);
+                  }}
+                >
+                  Sync now
+                </button>
+                {onOpenSettings && (
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setOpen(false);
+                      onOpenSettings();
+                    }}
+                  >
+                    Team & users
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="ghost danger"
+                  onClick={() => {
+                    void sync.signOut();
+                  }}
+                >
+                  Sign out
+                </button>
+              </div>
             </div>
           ) : sync.hasToken ? (
             <div className="sync-actions">
-              <button type="button" className="ghost" onClick={() => { sync.syncNow(); setOpen(false); }}>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  sync.syncNow();
+                  setOpen(false);
+                }}
+              >
                 Sync now
               </button>
               <button type="button" className="ghost danger" onClick={sync.clearToken}>
                 Forget token
               </button>
             </div>
-          ) : sync.needsToken ? (
+          ) : !showTokenMode ? (
             <form
-              className="sync-actions"
+              className="sync-auth-form"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (sync.setupRequired) {
+                  const ok = await sync.setupAdmin(email, name, password);
+                  if (ok) {
+                    setPassword('');
+                    setOpen(false);
+                  }
+                } else {
+                  const ok = await sync.login(email, password);
+                  if (ok) {
+                    setPassword('');
+                    setOpen(false);
+                  }
+                }
+              }}
+            >
+              {sync.setupRequired && (
+                <input
+                  type="text"
+                  className="sync-input"
+                  value={name}
+                  placeholder="Your name"
+                  required
+                  autoComplete="name"
+                  onChange={(e) => setName(e.target.value)}
+                />
+              )}
+              <input
+                type="email"
+                className="sync-input"
+                value={email}
+                placeholder="Email address"
+                required
+                autoComplete="email"
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <input
+                type="password"
+                className="sync-input"
+                value={password}
+                placeholder={sync.setupRequired ? 'Choose a password (8+ chars)' : 'Password'}
+                required
+                minLength={sync.setupRequired ? 8 : 1}
+                autoComplete={sync.setupRequired ? 'new-password' : 'current-password'}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              {sync.authError && <p className="sync-error">{sync.authError}</p>}
+              <div className="sync-actions">
+                <button type="submit" className="ghost accent" disabled={sync.authBusy}>
+                  {sync.authBusy
+                    ? 'Signing in…'
+                    : sync.setupRequired
+                      ? 'Create admin account'
+                      : 'Sign in'}
+                </button>
+                <button
+                  type="button"
+                  className="ghost sync-mini-btn"
+                  onClick={() => setShowTokenMode(true)}
+                >
+                  Use token
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form
+              className="sync-auth-form"
               onSubmit={(event) => {
                 event.preventDefault();
-                if (!draft.trim()) return;
-                sync.setToken(draft);
-                setDraft('');
+                if (!tokenDraft.trim()) return;
+                sync.setToken(tokenDraft);
+                setTokenDraft('');
                 setOpen(false);
               }}
             >
               <input
                 type="password"
                 className="sync-input"
-                value={draft}
-                placeholder="Sync token"
+                value={tokenDraft}
+                placeholder="Shared sync token (BOARD_TOKEN)"
                 autoComplete="off"
                 aria-label="Sync token"
-                onChange={(event) => setDraft(event.target.value)}
+                onChange={(event) => setTokenDraft(event.target.value)}
               />
-              <button type="submit" className="ghost accent">
-                Connect
-              </button>
+              <div className="sync-actions">
+                <button type="submit" className="ghost accent">
+                  Connect
+                </button>
+                <button
+                  type="button"
+                  className="ghost sync-mini-btn"
+                  onClick={() => setShowTokenMode(false)}
+                >
+                  Email sign-in
+                </button>
+              </div>
             </form>
-          ) : null}
+          )}
         </div>
       )}
     </div>

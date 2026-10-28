@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CalendarFeed } from '../../feed';
 import type { M365 } from '../../m365';
+import type { Sync } from '../../sync';
 import CategoriesTab from './CategoriesTab';
 import ClientsTab from './ClientsTab';
 import CardsTab from './CardsTab';
 import CalendarTab from './CalendarTab';
 import BackupTab from './BackupTab';
+import TeamTab from './TeamTab';
 
 export const SETTINGS_TABS = [
+  { id: 'team', label: 'Team & boards' },
   { id: 'categories', label: 'Categories' },
   { id: 'clients', label: 'Clients' },
   { id: 'cards', label: 'Cards & updates' },
@@ -18,6 +21,7 @@ export const SETTINGS_TABS = [
 export type SettingsTabId = (typeof SETTINGS_TABS)[number]['id'];
 
 export interface SettingsDialogProps {
+  sync: Sync;
   m365: M365;
   feed: CalendarFeed;
   onClose: () => void;
@@ -25,10 +29,11 @@ export interface SettingsDialogProps {
 }
 
 export default function SettingsDialog({
+  sync,
   m365,
   feed,
   onClose,
-  initialTab = 'categories',
+  initialTab = 'team',
 }: SettingsDialogProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const [tab, setTab] = useState<SettingsTabId>(initialTab);
@@ -90,6 +95,7 @@ export default function SettingsDialog({
         </div>
 
         <div className="modal-body">
+          {tab === 'team' && <TeamTab sync={sync} />}
           {tab === 'categories' && <CategoriesTab />}
           {tab === 'clients' && <ClientsTab />}
           {tab === 'cards' && <CardsTab />}

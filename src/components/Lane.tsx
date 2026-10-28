@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import SortableCard from './TCard';
-import type { Card, LaneId } from '../types';
+import { cardLoggedHours, type Card, type LaneId } from '../types';
 import { formatEstimate } from '../cardText';
 import { formatTime } from '../dates';
 import type { CalendarEvent } from '../m365';
+import { useBoardActions } from '../store/boardStore';
 
 /** Past this many the strip would start competing with the cards, which are
  *  the point of the column. The rest are a click away on the day view. */
@@ -42,6 +43,7 @@ export interface LaneProps {
 export default function Lane(props: LaneProps) {
   const { id, title, subtitle, cards, matches, isToday, isPast, isWeekend, isBacklog, capacity, locked, events = [], onOpen, onQuickAdd, onOpenDay, onNewFromProject, onPatch } = props;
   const { setNodeRef, isOver } = useDroppable({ id: `lane:${id}`, data: { type: 'lane', lane: id } });
+  const { rolloverPastCards } = useBoardActions();
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,8 +66,8 @@ export default function Lane(props: LaneProps) {
   };
 
   const planned = cards.reduce((sum, card) => sum + (card.status === 'done' ? 0 : card.estimate), 0);
-  /** What the day actually cost: the sized cards that got finished. */
-  const logged = cards.reduce((sum, card) => sum + (card.status === 'done' ? card.estimate : 0), 0);
+  /** What the day actually cost: logged updates or finished card estimates. */
+  const logged = cards.reduce((sum, card) => sum + cardLoggedHours(card), 0);
   const done = cards.filter((card) => card.status === 'done');
   const remaining = cards.length - done.length;
   const load = capacity > 0 ? Math.min(planned / capacity, 1) : 0;
@@ -95,6 +97,16 @@ export default function Lane(props: LaneProps) {
           {subtitle && <span className="lane-sub">{subtitle}</span>}
         </div>
         <div className="lane-stats" title={`${remaining} open card${remaining === 1 ? '' : 's'}${planned ? `, ${formatEstimate(planned)} planned` : ''}`}>
+          {isPast && !isBacklog && remaining > 0 && !locked && (
+            <button
+              type="button"
+              className="lane-rollover-btn"
+              onClick={() => rolloverPastCards(id)}
+              title={`Roll ${remaining} unfinished card${remaining === 1 ? '' : 's'} from ${title} to Today`}
+            >
+              ↪ Today
+            </button>
+          )}
           {planned > 0 && <span className="lane-hours">{formatEstimate(planned)}</span>}
           <span className="lane-count">{remaining}</span>
         </div>

@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo } from 'react';
-import type { Client, Project, UpdateCategories } from './types';
+import type { AppUser, Client, Project, UpdateCategories } from './types';
 
 /** What a card face needs to know beyond its own fields: who the clients and
  *  projects it names actually are, and whether descriptions are being shown.
@@ -17,6 +17,7 @@ export interface Lookups {
   categoryOrder: string[];
   updateCategories: UpdateCategories;
   updateCategoryOrder: string[];
+  users: AppUser[];
   showDescription: boolean;
 }
 
@@ -27,6 +28,7 @@ const EMPTY: Lookups = {
   categoryOrder: [],
   updateCategories: {},
   updateCategoryOrder: [],
+  users: [],
   showDescription: true,
 };
 

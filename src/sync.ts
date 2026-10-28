@@ -1,21 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isUntouched, normalise } from './store';
-import type { BoardState } from './types';
+import {
+  getActiveWorkspaceId,
+  getBoardState,
+  switchWorkspaceBoard,
+  useBoard,
+} from './store/boardStore';
+import type {
+  AppUser,
+  BoardState,
+  UserRole,
+  WorkspaceInfo,
+  WorkspaceKind,
+} from './types';
 
 const TOKEN_KEY = 'tcard-planner.token';
+const SESSION_TOKEN_KEY = 'tcard-planner.session-token';
 const META_KEY = 'tcard-planner.sync.v1';
 const PUSH_DEBOUNCE_MS = 1200;
 const POLL_MS = 45_000;
-/** Cloudflare handles this itself, at the edge, before the Worker sees it. */
-const LOGOUT_URL = '/cdn-cgi/access/logout';
 
 export type SyncStatus =
   /** No login on this device — the board is local only, which is a fine way to run. */
   | 'off'
-  /** The Worker has neither Access nor a BOARD_TOKEN set up yet. */
+  /** The Worker has no users or token set up yet (ready for initial admin setup). */
   | 'unconfigured'
   | 'unauthorised'
-  /** Signed in through Cloudflare Access once, but that session has run out. */
+  /** Session expired or signed out. */
   | 'signed-out'
   | 'idle'
   | 'saving'
@@ -31,38 +42,28 @@ interface Meta {
 }
 
 /** What the Worker says about who is asking. Null until the first answer. */
-interface Session {
-  /** The Worker is behind Cloudflare Access. */
+interface SessionResponse {
+  mode?: 'in-app' | 'token' | 'access';
+  setupRequired?: boolean;
   access: boolean;
-  /** This browser carries a login Access signed, so no token is needed. */
   signedIn: boolean;
   email: string | null;
-  /** The Worker has some way of letting you in at all. */
+  user?: AppUser | null;
+  workspaces?: WorkspaceInfo[];
   configured: boolean;
 }
 
-/** What being redirected to the Access login tells us, on its own. */
-const SIGNED_OUT: Session = { access: true, signedIn: false, email: null, configured: true };
-
-/** The statuses a fresh login fixes. The rest are about syncing, not getting in. */
 const WAITING_ON_LOGIN: SyncStatus[] = ['off', 'signed-out', 'unauthorised', 'unconfigured'];
-
-/** The answer usually repeats; keeping the old object saves a render each poll. */
-function sameSession(previous: Session | null, next: Session): Session {
-  return previous &&
-    previous.access === next.access &&
-    previous.signedIn === next.signedIn &&
-    previous.email === next.email &&
-    previous.configured === next.configured
-    ? previous
-    : next;
-}
 
 const DEFAULT_META: Meta = { rev: 0, dirty: false, lastSyncedAt: null };
 
-function readMeta(): Meta {
+function metaKeyFor(workspaceId = getActiveWorkspaceId()): string {
+  return !workspaceId || workspaceId === 'default' ? META_KEY : `${META_KEY}:${workspaceId}`;
+}
+
+function readMeta(workspaceId = getActiveWorkspaceId()): Meta {
   try {
-    const raw = localStorage.getItem(META_KEY);
+    const raw = localStorage.getItem(metaKeyFor(workspaceId));
     return raw ? { ...DEFAULT_META, ...(JSON.parse(raw) as Partial<Meta>) } : DEFAULT_META;
   } catch {
     return DEFAULT_META;
@@ -77,63 +78,115 @@ function readToken(): string {
   }
 }
 
+function readSessionToken(): string {
+  try {
+    return localStorage.getItem(SESSION_TOKEN_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeSessionToken(token: string): void {
+  try {
+    if (token) {
+      localStorage.setItem(SESSION_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(SESSION_TOKEN_KEY);
+    }
+  } catch {
+    // Ignore storage issues.
+  }
+}
+
 /**
- * What to put on a call to the Worker.
- *
- * The Access login rides along as a cookie and needs nothing here; the shared
- * token is only sent when there is one, so a signed-in browser needn't hold a
- * secret at all. Exported because the board is not the only thing the app asks
- * the Worker for — the calendar feed is set up through the same door.
+ * Headers attached to calls to the Worker.
+ * Includes the active workspace ID and any active session or shared token.
  */
 export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const token = readToken();
-  return token ? { authorization: `Bearer ${token}`, ...extra } : { ...extra };
+  const bearer = readSessionToken() || readToken();
+  const workspaceId = getActiveWorkspaceId();
+  const base: Record<string, string> = {
+    'x-workspace-id': workspaceId,
+  };
+  if (bearer) {
+    base.authorization = `Bearer ${bearer}`;
+  }
+  return { ...base, ...extra };
 }
 
 export interface Sync {
   status: SyncStatus;
   hasToken: boolean;
-  /** True once the Worker has confirmed a Cloudflare Access login. */
   signedIn: boolean;
-  /** Who Access says you are, for the badge to show. */
+  setupRequired: boolean;
+  user: AppUser | null;
+  users: AppUser[];
+  workspaces: WorkspaceInfo[];
+  activeWorkspaceId: string;
   email: string | null;
-  /** False when Access is doing the login, so the token box is just noise. */
   needsToken: boolean;
+  authError: string | null;
+  authBusy: boolean;
   lastSyncedAt: string | null;
-  /** The server's board, held back for you to choose while a conflict stands. */
   conflict: BoardState | null;
   setToken: (token: string) => void;
   clearToken: () => void;
   resolve: (choice: 'mine' | 'theirs') => void;
   syncNow: () => void;
-  /** Go back through Access for a fresh session. */
+  login: (email: string, password: string) => Promise<boolean>;
+  setupAdmin: (email: string, name: string, password: string) => Promise<boolean>;
   signIn: () => void;
-  signOut: () => void;
+  signOut: () => Promise<void>;
+  switchWorkspace: (workspaceId: string) => void;
+  createWorkspace: (name: string, kind: WorkspaceKind) => Promise<WorkspaceInfo | null>;
+  renameWorkspace: (id: string, name: string) => Promise<boolean>;
+  deleteWorkspace: (id: string) => Promise<boolean>;
+  createUser: (input: {
+    email: string;
+    name: string;
+    password: string;
+    role: UserRole;
+  }) => Promise<{ ok: boolean; error?: string }>;
+  updateUser: (
+    id: string,
+    patch: { name?: string; email?: string; role?: UserRole; password?: string },
+  ) => Promise<{ ok: boolean; error?: string }>;
+  deleteUser: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  updateProfile: (patch: {
+    name?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
 }
 
-/**
- * Keeps one board in step with the Worker.
- *
- * The board itself is never merged: a device either agrees with the server's
- * revision or it doesn't, and if it doesn't you're asked which side wins. For
- * one person on two devices that is almost always "nothing happened", and when
- * it isn't, losing an afternoon's planning silently would be much worse than a
- * question.
- *
- * Getting in is the Worker's business, not this file's. Ask it once who you
- * are: behind Cloudflare Access the browser is already logged in and syncing
- * just starts, and only a Worker without Access falls back to asking for a
- * shared token per device.
- */
-export function useSync(board: BoardState, adopt: (state: BoardState) => void): Sync {
-  const [token, setTokenState] = useState(readToken);
-  const [session, setSession] = useState<Session | null>(null);
-  const [status, setStatus] = useState<SyncStatus>(() => (readToken() ? 'idle' : 'off'));
-  const [conflict, setConflict] = useState<BoardState | null>(null);
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => readMeta().lastSyncedAt);
+const DEFAULT_WORKSPACES: WorkspaceInfo[] = [
+  {
+    id: 'default',
+    name: 'Team Board',
+    kind: 'team',
+    ownerId: null,
+    createdAt: new Date(0).toISOString(),
+  },
+];
 
-  const meta = useRef<Meta>(readMeta());
-  /** The exact board object the server has, so a pulled board isn't pushed back. */
+export function useSync(board: BoardState, adopt: (state: BoardState) => void): Sync {
+  const activeWorkspaceId = useBoard(() => getActiveWorkspaceId());
+  const [token, setTokenState] = useState(readToken);
+  const [sessionToken, setSessionTokenState] = useState(readSessionToken);
+  const [session, setSession] = useState<SessionResponse | null>(null);
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>(DEFAULT_WORKSPACES);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [status, setStatus] = useState<SyncStatus>(() =>
+    readSessionToken() || readToken() ? 'idle' : 'off',
+  );
+  const [conflict, setConflict] = useState<BoardState | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(
+    () => readMeta(activeWorkspaceId).lastSyncedAt,
+  );
+
+  const meta = useRef<Meta>(readMeta(activeWorkspaceId));
   const synced = useRef<BoardState>(board);
   const conflictRev = useRef(0);
   const inFlight = useRef(false);
@@ -142,28 +195,25 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
   boardRef.current = board;
 
   const signedIn = Boolean(session?.signedIn);
-  /** Either credential is enough to talk to the server. */
-  const enabled = signedIn || Boolean(token);
+  const setupRequired = Boolean(session?.setupRequired);
+  const enabled = signedIn || Boolean(token) || Boolean(sessionToken);
 
-  const writeMeta = useCallback((patch: Partial<Meta>) => {
+  const writeMeta = useCallback((patch: Partial<Meta>, wsId = getActiveWorkspaceId()) => {
     meta.current = { ...meta.current, ...patch };
     try {
-      localStorage.setItem(META_KEY, JSON.stringify(meta.current));
+      localStorage.setItem(metaKeyFor(wsId), JSON.stringify(meta.current));
     } catch {
       // A full quota shouldn't stop syncing.
     }
     if (patch.lastSyncedAt !== undefined) setLastSyncedAt(patch.lastSyncedAt);
   }, []);
 
-  // `token` is not read here — `authHeaders` takes it from the same store it
-  // was written to — but a change to it does have to rebuild these callbacks.
-  const headers = useCallback((extra: Record<string, string> = {}) => authHeaders(extra), [token]);
+  const headers = useCallback(
+    (extra: Record<string, string> = {}) => authHeaders(extra),
+    [token, sessionToken, activeWorkspaceId],
+  );
 
-  /** Maps the Worker's refusals onto a status, or null if the call was fine. */
   const failureStatus = useCallback(async (response: Response): Promise<SyncStatus | null> => {
-    // An expired Access session is bounced to the login page, and a same-origin
-    // fetch follows that redirect happily — so a "successful" reply from
-    // somewhere other than where we asked means the session is gone.
     if (response.redirected) return 'signed-out';
 
     if (response.status === 401) {
@@ -264,52 +314,69 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
     }
   }, [adopt, enabled, failureStatus, headers, push, writeMeta]);
 
-  /**
-   * Ask the Worker who we are, before anything else.
-   *
-   * A board opened from the service worker's cache with no signal gets no
-   * answer at all, and that is not a reason to declare anyone signed out: the
-   * session is simply unknown, and the first real sync will say. Being bounced
-   * to the login page is different — that is an answer, and it means the
-   * Access session has ended.
-   */
+  const fetchUsers = useCallback(async () => {
+    try {
+      const response = await fetch('/api/users', { headers: authHeaders(), cache: 'no-store' });
+      if (!response.ok) return;
+      const body = (await response.json()) as { users?: AppUser[] };
+      if (Array.isArray(body.users)) {
+        setUsers(body.users);
+      }
+    } catch {
+      // Ignore if offline or local dev without worker.
+    }
+  }, []);
+
   const readSession = useCallback(async () => {
     try {
-      const response = await fetch('/api/session', { cache: 'no-store' });
+      const response = await fetch('/api/session', { headers: authHeaders(), cache: 'no-store' });
       if (response.redirected) {
-        setSession((prev) => sameSession(prev, SIGNED_OUT));
+        setSession({
+          access: true,
+          signedIn: false,
+          email: null,
+          configured: true,
+        });
         return;
       }
       if (!response.ok) return;
-      const next = (await response.json()) as Session;
-      setSession((prev) => sameSession(prev, next));
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) return;
+      const next = (await response.json()) as SessionResponse;
+      setSession(next);
+      if (Array.isArray(next.workspaces) && next.workspaces.length > 0) {
+        setWorkspaces(next.workspaces);
+      }
+      if (next.signedIn) {
+        void fetchUsers();
+      }
     } catch {
       // Offline. Whatever we knew last still holds.
     }
-  }, []);
+  }, [fetchUsers]);
 
   useEffect(() => {
     void readSession();
   }, [readSession]);
 
-  // Signing in or out through Access changes what this device can do without
-  // the token ever changing, so settle the status once the answer lands —
-  // without treading on a sync that is mid-flight.
   useEffect(() => {
     if (!session) return;
     setStatus((current) => {
       if (current === 'conflict') return current;
       if (signedIn) return WAITING_ON_LOGIN.includes(current) ? 'idle' : current;
-      if (!token) return session.access ? 'signed-out' : 'off';
+      if (!token && !sessionToken) {
+        if (session.setupRequired) return 'unconfigured';
+        return session.access ? 'signed-out' : 'off';
+      }
       return current;
     });
-  }, [session, signedIn, token]);
+  }, [session, signedIn, token, sessionToken]);
 
   // Local edits: mark dirty and push, once the dust settles.
   useEffect(() => {
     if (!enabled || board === synced.current) return;
     if (!meta.current.dirty) writeMeta({ dirty: true });
-    if (status === 'conflict') return; // Wait for the choice rather than fighting it.
+    if (status === 'conflict') return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => push(board), PUSH_DEBOUNCE_MS);
     return () => {
@@ -324,8 +391,6 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
 
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
-        // A tab left open past the session's end needs to notice it was signed
-        // out, so re-ask before syncing rather than after it fails.
         void readSession();
         void pull();
       }
@@ -349,13 +414,10 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
       try {
         localStorage.setItem(TOKEN_KEY, trimmed);
       } catch {
-        // Nothing to do; the token just won't survive a reload.
+        // Ignore storage errors.
       }
-      // A new token means a new conversation with the server, starting at rev 0.
-      // Real local work counts as an unsent change, so if the server already has
-      // a board you get asked which one wins instead of quietly losing yours.
       meta.current = { ...DEFAULT_META, dirty: !isUntouched(boardRef.current) };
-      localStorage.setItem(META_KEY, JSON.stringify(meta.current));
+      localStorage.setItem(metaKeyFor(), JSON.stringify(meta.current));
       setConflict(null);
       setTokenState(trimmed);
       setStatus(trimmed || signedIn ? 'idle' : 'off');
@@ -364,6 +426,343 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
   );
 
   const clearToken = useCallback(() => setToken(''), [setToken]);
+
+  const login = useCallback(
+    async (email: string, password: string): Promise<boolean> => {
+      setAuthBusy(true);
+      setAuthError(null);
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: authHeaders({ 'content-type': 'application/json' }),
+          body: JSON.stringify({ email, password }),
+        });
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          user?: AppUser;
+          workspaces?: WorkspaceInfo[];
+          sessionToken?: string;
+        };
+        if (!response.ok || !body.user) {
+          setAuthError(body.error || 'Invalid email or password.');
+          return false;
+        }
+        if (body.sessionToken) {
+          writeSessionToken(body.sessionToken);
+          setSessionTokenState(body.sessionToken);
+        }
+        if (Array.isArray(body.workspaces) && body.workspaces.length > 0) {
+          setWorkspaces(body.workspaces);
+        }
+        setSession({
+          mode: 'in-app',
+          setupRequired: false,
+          access: false,
+          signedIn: true,
+          email: body.user.email,
+          user: body.user,
+          workspaces: body.workspaces ?? DEFAULT_WORKSPACES,
+          configured: true,
+        });
+        meta.current = { ...readMeta(), dirty: !isUntouched(boardRef.current) };
+        setStatus('idle');
+        void fetchUsers();
+        return true;
+      } catch {
+        setAuthError('Could not reach the server. Check your connection.');
+        return false;
+      } finally {
+        setAuthBusy(false);
+      }
+    },
+    [fetchUsers],
+  );
+
+  const setupAdmin = useCallback(
+    async (email: string, name: string, password: string): Promise<boolean> => {
+      setAuthBusy(true);
+      setAuthError(null);
+      try {
+        const response = await fetch('/api/auth/setup', {
+          method: 'POST',
+          headers: authHeaders({ 'content-type': 'application/json' }),
+          body: JSON.stringify({ email, name, password }),
+        });
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          user?: AppUser;
+          workspaces?: WorkspaceInfo[];
+          sessionToken?: string;
+        };
+        if (!response.ok || !body.user) {
+          setAuthError(body.error || 'Could not create admin account.');
+          return false;
+        }
+        if (body.sessionToken) {
+          writeSessionToken(body.sessionToken);
+          setSessionTokenState(body.sessionToken);
+        }
+        if (Array.isArray(body.workspaces) && body.workspaces.length > 0) {
+          setWorkspaces(body.workspaces);
+        }
+        setSession({
+          mode: 'in-app',
+          setupRequired: false,
+          access: false,
+          signedIn: true,
+          email: body.user.email,
+          user: body.user,
+          workspaces: body.workspaces ?? DEFAULT_WORKSPACES,
+          configured: true,
+        });
+        setUsers([body.user]);
+        meta.current = { ...readMeta(), dirty: !isUntouched(boardRef.current) };
+        setStatus('idle');
+        return true;
+      } catch {
+        setAuthError('Could not reach the server. Check your connection.');
+        return false;
+      } finally {
+        setAuthBusy(false);
+      }
+    },
+    [],
+  );
+
+  const signOut = useCallback(async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() });
+    } catch {
+      // Ignore network errors on logout.
+    }
+    writeSessionToken('');
+    setSessionTokenState('');
+    setConflict(null);
+    setSession((prev) =>
+      prev
+        ? {
+            ...prev,
+            signedIn: false,
+            email: null,
+            user: null,
+          }
+        : null,
+    );
+    setStatus(token ? 'idle' : 'off');
+  }, [token]);
+
+  const switchWorkspace = useCallback(
+    (workspaceId: string) => {
+      const nextId = workspaceId.trim() || 'default';
+      if (nextId === getActiveWorkspaceId()) return;
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
+      switchWorkspaceBoard(nextId);
+      const nextBoard = getBoardState();
+      synced.current = nextBoard;
+      const nextMeta = readMeta(nextId);
+      meta.current = nextMeta;
+      setLastSyncedAt(nextMeta.lastSyncedAt);
+      setConflict(null);
+      if (enabled) {
+        setStatus('idle');
+        setTimeout(() => void pull(), 20);
+      }
+    },
+    [enabled, pull],
+  );
+
+  const createWorkspace = useCallback(
+    async (name: string, kind: WorkspaceKind): Promise<WorkspaceInfo | null> => {
+      const trimmed = name.trim();
+      if (!trimmed) return null;
+      try {
+        const response = await fetch('/api/workspaces', {
+          method: 'POST',
+          headers: authHeaders({ 'content-type': 'application/json' }),
+          body: JSON.stringify({ name: trimmed, kind }),
+        });
+        if (response.ok) {
+          const body = (await response.json()) as {
+            workspace: WorkspaceInfo;
+            workspaces: WorkspaceInfo[];
+          };
+          if (Array.isArray(body.workspaces)) setWorkspaces(body.workspaces);
+          if (body.workspace) {
+            switchWorkspace(body.workspace.id);
+            return body.workspace;
+          }
+        }
+      } catch {
+        // Fallback to local-only workspace if offline or local dev.
+      }
+      const localWs: WorkspaceInfo = {
+        id: `${kind}-${Math.random().toString(36).slice(2, 8)}`,
+        name: trimmed,
+        kind,
+        ownerId: session?.user?.id ?? null,
+        createdAt: new Date().toISOString(),
+      };
+      setWorkspaces((prev) => [...prev, localWs]);
+      switchWorkspace(localWs.id);
+      return localWs;
+    },
+    [session?.user?.id, switchWorkspace],
+  );
+
+  const renameWorkspace = useCallback(async (id: string, name: string): Promise<boolean> => {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    try {
+      const response = await fetch(`/api/workspaces/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: authHeaders({ 'content-type': 'application/json' }),
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (response.ok) {
+        const body = (await response.json()) as { workspaces?: WorkspaceInfo[] };
+        if (Array.isArray(body.workspaces)) {
+          setWorkspaces(body.workspaces);
+          return true;
+        }
+      }
+    } catch {
+      // Update locally below.
+    }
+    setWorkspaces((prev) => prev.map((w) => (w.id === id ? { ...w, name: trimmed } : w)));
+    return true;
+  }, []);
+
+  const deleteWorkspace = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (id === 'default') return false;
+      try {
+        const response = await fetch(`/api/workspaces/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: authHeaders(),
+        });
+        if (response.ok) {
+          const body = (await response.json()) as { workspaces?: WorkspaceInfo[] };
+          if (Array.isArray(body.workspaces)) setWorkspaces(body.workspaces);
+        }
+      } catch {
+        setWorkspaces((prev) => prev.filter((w) => w.id !== id));
+      }
+      if (getActiveWorkspaceId() === id) {
+        switchWorkspace('default');
+      }
+      return true;
+    },
+    [switchWorkspace],
+  );
+
+  const createUser = useCallback(
+    async (input: {
+      email: string;
+      name: string;
+      password: string;
+      role: UserRole;
+    }): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const response = await fetch('/api/users', {
+          method: 'POST',
+          headers: authHeaders({ 'content-type': 'application/json' }),
+          body: JSON.stringify(input),
+        });
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          users?: AppUser[];
+        };
+        if (!response.ok) return { ok: false, error: body.error || 'Could not create user.' };
+        if (Array.isArray(body.users)) setUsers(body.users);
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Could not reach the server.' };
+      }
+    },
+    [],
+  );
+
+  const updateUser = useCallback(
+    async (
+      id: string,
+      patch: { name?: string; email?: string; role?: UserRole; password?: string },
+    ): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const response = await fetch(`/api/users/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: authHeaders({ 'content-type': 'application/json' }),
+          body: JSON.stringify(patch),
+        });
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          user?: AppUser;
+          users?: AppUser[];
+        };
+        if (!response.ok) return { ok: false, error: body.error || 'Could not update user.' };
+        if (Array.isArray(body.users)) setUsers(body.users);
+        if (body.user && session?.user?.id === body.user.id) {
+          setSession((prev) => (prev ? { ...prev, user: body.user!, email: body.user!.email } : prev));
+        }
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Could not reach the server.' };
+      }
+    },
+    [session?.user?.id],
+  );
+
+  const deleteUser = useCallback(
+    async (id: string): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const response = await fetch(`/api/users/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: authHeaders(),
+        });
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          users?: AppUser[];
+        };
+        if (!response.ok) return { ok: false, error: body.error || 'Could not remove user.' };
+        if (Array.isArray(body.users)) setUsers(body.users);
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Could not reach the server.' };
+      }
+    },
+    [],
+  );
+
+  const updateProfile = useCallback(
+    async (patch: {
+      name?: string;
+      currentPassword?: string;
+      newPassword?: string;
+    }): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const response = await fetch('/api/auth/profile', {
+          method: 'PATCH',
+          headers: authHeaders({ 'content-type': 'application/json' }),
+          body: JSON.stringify(patch),
+        });
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          user?: AppUser;
+        };
+        if (!response.ok) return { ok: false, error: body.error || 'Could not update profile.' };
+        if (body.user) {
+          setSession((prev) => (prev ? { ...prev, user: body.user!, email: body.user!.email } : prev));
+          setUsers((prev) => prev.map((u) => (u.id === body.user!.id ? body.user! : u)));
+        }
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Could not reach the server.' };
+      }
+    },
+    [],
+  );
 
   const resolve = useCallback(
     (choice: 'mine' | 'theirs') => {
@@ -386,21 +785,32 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
     status,
     hasToken: Boolean(token),
     signedIn,
-    email: session?.email ?? null,
-    // Behind Access the login is the login; a token as well would be one more
-    // secret to keep, guarding a door that is already shut.
+    setupRequired,
+    user: session?.user ?? null,
+    users,
+    workspaces,
+    activeWorkspaceId,
+    email: session?.user?.email ?? session?.email ?? null,
     needsToken: !signedIn && !session?.access,
+    authError,
+    authBusy,
     lastSyncedAt,
     conflict,
     setToken,
     clearToken,
     resolve,
-    // Reloading is what re-runs the login: Access challenges the navigation and
-    // hands the browser a fresh session before the app comes back.
-    signIn: () => window.location.reload(),
-    signOut: () => {
-      window.location.href = LOGOUT_URL;
-    },
+    login,
+    setupAdmin,
+    signIn: () => void readSession(),
+    signOut,
+    switchWorkspace,
+    createWorkspace,
+    renameWorkspace,
+    deleteWorkspace,
+    createUser,
+    updateUser,
+    deleteUser,
+    updateProfile,
     syncNow: () => void pull(),
   };
 }

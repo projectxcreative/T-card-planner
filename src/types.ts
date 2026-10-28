@@ -201,6 +201,23 @@ export interface Expense {
 
 export const EXPENSE_LABEL_MAX = 60;
 
+/** A staged invoice milestone on a project (e.g. 50% deposit, 50% on delivery).
+ *  When a project has milestones, Billing groups each milestone by its own
+ *  `invoiceMonth` and `status` bucket rather than treating the whole project as
+ *  one single invoice. */
+export interface ProjectMilestone {
+  id: string;
+  label: string;
+  /** Pounds. */
+  amount: number;
+  /** `YYYY-MM`, or null until assigned to a billing month. */
+  invoiceMonth: string | null;
+  /** Which billing bucket this milestone sits in (`todo`, `due`, `sent`, `paid`). */
+  status: BillingBucket;
+}
+
+export const MILESTONE_LABEL_MAX = 60;
+
 /** A piece of billable work several cards belong to. The value is what the
  *  whole thing is worth, in whole pounds — enough to see what a week of cards
  *  is actually earning, without turning the planner into an invoicing tool. */
@@ -211,10 +228,12 @@ export interface Project {
   description: string;
   /** Pounds. 0 means "not valued", which is different from "worth nothing". */
   value: number;
+  /** Optional hour budget for tracking burn and profitability. 0 = no budget set. */
+  budgetHours: number;
   /** Where it is in the pipeline. */
   stage: ProjectStage;
   /** The client it is for. One, not a list: a project belongs to whoever is
-   *  paying for it, and two payers is a different kind of thing entirely. */
+    *  paying for it, and two payers is a different kind of thing entirely. */
   clientId: string | null;
   /**
    * The month this is to be billed in, as `YYYY-MM`, or null until it is.
@@ -225,6 +244,8 @@ export interface Project {
    * when a project is first delivered and freely moved afterwards.
    */
   invoiceMonth: string | null;
+  /** Optional staged billing milestones (e.g. Deposit + Final Balance). */
+  milestones: ProjectMilestone[];
   /** Cards created inside a project start with this category. */
   colour: CategoryId;
   /** Costs against the project's value — expenses, not time. */
@@ -244,6 +265,11 @@ export function projectCosts(project: Project): number {
   return project.expenses.reduce((sum, expense) => (expense.chargeable ? sum : sum + expense.amount), 0);
 }
 
+/** Net project value after absorbed (non-chargeable) costs. */
+export function projectNet(project: Project): number {
+  return project.value - projectCosts(project);
+}
+
 /** Expenses billed on to the client rather than absorbed — recovered in
  *  full, so they leave the project's own margin untouched. */
 export function chargeableExpenses(project: Project): number {
@@ -255,6 +281,10 @@ export function chargeableExpenses(project: Project): number {
  *  it belongs in any figure that reads as a project's total — the lists and
  *  their subtotals — while the value on its own stays what the work earns. */
 export function projectTotal(project: Project): number {
+  if (project.milestones && project.milestones.length > 0) {
+    const milestoneSum = project.milestones.reduce((sum, m) => sum + m.amount, 0);
+    return milestoneSum + chargeableExpenses(project);
+  }
   return project.value + chargeableExpenses(project);
 }
 
@@ -432,6 +462,8 @@ export interface CardUpdate {
   minutes: number;
   /** What was actually done, in a line. */
   note: string;
+  /** Local day key (`YYYY-MM-DD`) the work took place on. */
+  date: string;
   createdAt: string;
 }
 
@@ -440,6 +472,14 @@ export const UPDATE_NOTE_MAX = 140;
 /** Minutes logged on a card, across every update on it. */
 export function totalUpdateMinutes(updates: CardUpdate[]): number {
   return updates.reduce((sum, update) => sum + update.minutes, 0);
+}
+
+/** Hours logged on a card: discrete updates if logged, otherwise the card's
+ *  estimate once marked Done. */
+export function cardLoggedHours(card: Card): number {
+  const fromUpdates = totalUpdateMinutes(card.updates) / 60;
+  if (fromUpdates > 0) return fromUpdates;
+  return card.status === 'done' ? card.estimate : 0;
 }
 
 export interface Card {
@@ -454,6 +494,10 @@ export interface Card {
   /** Minutes from local midnight on its day, or null for "sometime today".
    *  Set by dropping the card onto the day view's timeline. */
   start: number | null;
+  /** Optional deadline (`YYYY-MM-DD`), independent of which day lane the card is scheduled on. */
+  dueDate: string | null;
+  /** Optional team member user id assigned to this card. */
+  assigneeId?: string | null;
   /** The project this card belongs to, if any. */
   projectId: string | null;
   /** Client ids. A card can carry several, and needn't inherit its project's. */
@@ -501,15 +545,33 @@ export interface BoardState {
   clientOrder: string[];
   /**
    * Calendar entries whose card is gone, waiting to be taken off the calendar.
-   *
-   * A published card carries the id of its entry, so removing the entry when
-   * the card changes is easy — you still have the card. Deleting the card takes
-   * that id with it, and the entry is left in Outlook with nothing pointing at
-   * it. The id is kept here instead until a connected device can remove it,
-   * which is also why it travels with the board rather than sitting on the
-   * device that did the deleting: that device may never be the one connected.
    */
   orphanedEvents: string[];
+}
+
+/* ---------- users & workspaces ---------- */
+
+export type UserRole = 'admin' | 'member';
+
+export interface AppUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  colour: string;
+  createdAt: string;
+}
+
+export type WorkspaceKind = 'team' | 'personal';
+
+export interface WorkspaceInfo {
+  id: string;
+  name: string;
+  kind: WorkspaceKind;
+  ownerId: string | null;
+  memberIds?: string[];
+  boardKey?: string;
+  createdAt: string;
 }
 
 /** Pounds, with the pence dropped — project values are round numbers. */

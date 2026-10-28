@@ -1,46 +1,55 @@
 /**
- * Serves the built board app and a two-call sync API.
- *
- * The whole board is one JSON blob in KV, which is all a single-user planner
- * needs. Writes carry the revision they were based on, so a device that has
- * been offline (or is just a stale tab) is told its base is old rather than
- * silently flattening the newer board.
- *
- * Who gets in is decided in two places. Cloudflare Access does the login at
- * the edge and this Worker re-checks its signature (see `access.ts`), so the
- * board is only served to someone your Access policy let through. A shared
- * `BOARD_TOKEN` remains for callers that are not a browser — a backup script,
- * or a `wrangler dev` run with no Access in front of it.
- *
- * `/calendar/<token>.ics` is the one door neither of those guards, because the
- * thing knocking is a calendar client that cannot log in to anything: the token
- * in the path is its whole credential. See `calendar.ts`, and the Access bypass
- * the README asks you to add for it.
+ * Serves the built board app, in-app authentication & user/workspace management,
+ * and the workspace-scoped sync, file, and calendar feed APIs.
  */
 
-import { emailAllowed, teamHost, verifyAccess, type AccessIdentity, type AccessResult } from './access';
-import { fileIdFrom, handleFile, listFiles } from './files';
+import { emailAllowed, teamHost, verifyAccess, type AccessIdentity, type AccessResult } from './access.ts';
+import {
+  accessibleWorkspaces,
+  canAccessWorkspace,
+  clearSessionCookieHeader,
+  createSession,
+  deleteSession,
+  ensurePersonalWorkspace,
+  extractSessionToken,
+  hashPassword,
+  nextUserColour,
+  randomId,
+  randomToken,
+  readUsers,
+  readWorkspaces,
+  secretsMatch,
+  sessionCookieHeader,
+  toPublicUser,
+  verifyPassword,
+  verifySession,
+  writeUsers,
+  writeWorkspaces,
+  type PublicUser,
+  type StoredUser,
+  type UserRole,
+  type Workspace,
+  type WorkspaceKind,
+} from './auth.ts';
+import { fileIdFrom, handleFile, listFiles } from './files.ts';
 import {
   DEFAULT_FEED_OPTIONS,
   isValidTimeZone,
   normaliseOptions,
   renderCalendar,
   type FeedOptions,
-} from './calendar';
+} from './calendar.ts';
 
 export interface Env {
   BOARD: KVNamespace;
-  /** Shared secret for non-browser callers, and the only guard when Access is off. */
+  /** Optional shared secret for non-browser callers (e.g. backup scripts). */
   BOARD_TOKEN?: string;
-  /** Lets one namespace hold several boards if you ever want a second. */
+  /** Default board key in KV (`board` when omitted). */
   BOARD_KEY?: string;
-  /** A demo deployment must never serve the app before Access is configured. */
+  /** Legacy Cloudflare Access settings (optional fallback if still configured). */
   DEMO_MODE?: string;
-  /** Your Zero Trust team, e.g. `myteam` or `myteam.cloudflareaccess.com`. */
   ACCESS_TEAM_DOMAIN?: string;
-  /** The Application Audience tag of the Access application on this domain. */
   ACCESS_AUD?: string;
-  /** Optional extra gate: only these emails, whatever the Access policy says. */
   ACCESS_EMAILS?: string;
   ASSETS: Fetcher;
 }
@@ -51,24 +60,15 @@ interface StoredBoard {
   board: unknown;
 }
 
-/**
- * The calendar feed, if one has been made.
- *
- * The token *is* the credential — a calendar client cannot log in to anything —
- * so it lives here rather than on the board blob: the board is handed to every
- * device that syncs and exported by the backup button, and a subscription link
- * that leaks into a JSON file in someone's downloads folder is a link you have
- * to remember to rotate.
- */
 interface StoredFeed {
   token: string;
   createdAt: string;
   options: FeedOptions;
+  boardKey?: string;
 }
 
-/** `/calendar/<token>.ics`. A path, not a query string, so one Access bypass
- *  rule on `/calendar/*` covers the feed and nothing else. */
 const FEED_PATH = /^\/calendar\/([A-Za-z0-9_-]{16,128})\.ics$/;
+const FEED_INDEX_PREFIX = 'feed:token:';
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -78,18 +78,7 @@ const JSON_HEADERS = {
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { ...JSON_HEADERS, ...headers } });
 
-/** Access is on only when both halves are set; one alone can't verify anything. */
 const accessConfigured = (env: Env): boolean => Boolean(env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD);
-
-/** Compares without leaking where two secrets first differ. */
-function secretsMatch(a: string, b: string): boolean {
-  const left = new TextEncoder().encode(a);
-  const right = new TextEncoder().encode(b);
-  if (left.length !== right.length) return false;
-  let diff = 0;
-  for (let i = 0; i < left.length; i++) diff |= left[i] ^ right[i];
-  return diff === 0;
-}
 
 function bearer(request: Request): string | null {
   const header = request.headers.get('authorization');
@@ -98,13 +87,6 @@ function bearer(request: Request): string | null {
   return scheme.toLowerCase() === 'bearer' && rest.length > 0 ? rest.join(' ') : null;
 }
 
-/**
- * Runs the Access check, and applies the optional email allow list on top.
- *
- * An email that Access let through but the allow list doesn't want is reported
- * as `invalid` rather than as a pass, so the caller treats it exactly like a
- * token signed by the wrong team.
- */
 async function checkAccess(request: Request, env: Env): Promise<AccessResult | null> {
   if (!accessConfigured(env)) return null;
   const result = await verifyAccess(request, env.ACCESS_TEAM_DOMAIN!, env.ACCESS_AUD!);
@@ -114,74 +96,115 @@ async function checkAccess(request: Request, env: Env): Promise<AccessResult | n
   return result;
 }
 
-/**
- * Decides whether an API call may proceed, and returns who is asking.
- *
- * Either credential is enough: the Access login a browser arrives with, or the
- * shared token a script carries. 503 when neither is configured, so a
- * half-finished setup reads as "not set up" rather than "wrong password".
- */
-function authorise(
+interface CallerContext {
+  user: StoredUser | null;
+  users: Record<string, StoredUser>;
+  identity: AccessIdentity | null;
+  boardKey: string;
+  workspace: Workspace;
+  workspaces: Record<string, Workspace>;
+}
+
+const defaultBoardKey = (env: Env) => env.BOARD_KEY || 'board';
+const feedKeyFor = (bKey: string) => `${bKey}:feed`;
+
+async function resolveCaller(
   request: Request,
   env: Env,
   access: AccessResult | null,
-): { identity: AccessIdentity | null } | Response {
-  if (access?.ok) return { identity: access.identity };
+): Promise<CallerContext | Response> {
+  const baseKey = defaultBoardKey(env);
+  const workspaces = await readWorkspaces(env.BOARD, baseKey);
+  const requestedWsId =
+    request.headers.get('x-workspace-id')?.trim() ||
+    new URL(request.url).searchParams.get('workspace')?.trim() ||
+    'default';
 
-  if (env.BOARD_TOKEN) {
-    const supplied = bearer(request);
-    if (supplied && secretsMatch(supplied, env.BOARD_TOKEN)) return { identity: null };
+  // 1. First-party in-app session (cookie or bearer token)
+  const sessionAuth = await verifySession(request, env.BOARD);
+  if (sessionAuth) {
+    const { user, users } = sessionAuth;
+    const ws = workspaces[requestedWsId] ?? workspaces.default;
+    if (!canAccessWorkspace(user, ws)) {
+      return json({ error: 'forbidden', message: 'You do not have access to this workspace.' }, 403);
+    }
+    return {
+      user,
+      users,
+      identity: { email: user.email, sub: user.id, service: false },
+      boardKey: ws.boardKey,
+      workspace: ws,
+      workspaces,
+    };
   }
 
-  if (!env.BOARD_TOKEN && !accessConfigured(env)) {
+  // 2. Shared BOARD_TOKEN for scripts / CLI callers
+  if (env.BOARD_TOKEN) {
+    const supplied = bearer(request);
+    if (supplied && secretsMatch(supplied, env.BOARD_TOKEN)) {
+      const users = await readUsers(env.BOARD);
+      const ws = workspaces[requestedWsId] ?? workspaces.default;
+      return {
+        user: null,
+        users,
+        identity: null,
+        boardKey: ws.boardKey,
+        workspace: ws,
+        workspaces,
+      };
+    }
+  }
+
+  // 3. Optional legacy Cloudflare Access fallback
+  if (access?.ok) {
+    const users = await readUsers(env.BOARD);
+    const matchedUser = Object.values(users).find(
+      (u) => u.email.toLowerCase() === access.identity.email.toLowerCase(),
+    ) ?? null;
+    const ws = workspaces[requestedWsId] ?? workspaces.default;
+    return {
+      user: matchedUser,
+      users,
+      identity: access.identity,
+      boardKey: ws.boardKey,
+      workspace: ws,
+      workspaces,
+    };
+  }
+
+  const users = await readUsers(env.BOARD);
+  const hasUsers = Object.keys(users).length > 0;
+
+  if (!hasUsers && !env.BOARD_TOKEN && !accessConfigured(env)) {
     return json(
       {
-        error: 'not-configured',
-        message: 'This Worker has no login configured yet: set up Cloudflare Access, or a BOARD_TOKEN secret.',
+        error: 'setup-required',
+        message: 'Create the initial administrator account to set up this planner.',
       },
-      503,
+      401,
     );
   }
 
-  // A JWT that merely ran out is a different problem from a wrong one: the
-  // browser only needs to visit Access again, which the app can offer to do.
-  if (access && !access.ok && access.reason === 'expired') {
-    return json({ error: 'signed-out', message: 'Your Cloudflare Access session has expired.' }, 401);
-  }
-
-  return json({ error: 'unauthorised', message: 'Wrong or missing credentials.' }, 401);
+  return json({ error: 'unauthorised', message: 'Please sign in to continue.' }, 401);
 }
 
-async function readBoard(env: Env): Promise<StoredBoard | null> {
-  return env.BOARD.get<StoredBoard>(env.BOARD_KEY || 'board', 'json');
+async function readBoard(env: Env, bKey: string): Promise<StoredBoard | null> {
+  return env.BOARD.get<StoredBoard>(bKey, 'json');
 }
 
-const boardKey = (env: Env) => env.BOARD_KEY || 'board';
-const feedKey = (env: Env) => `${boardKey(env)}:feed`;
-
-async function readFeed(env: Env): Promise<StoredFeed | null> {
-  const stored = await env.BOARD.get<StoredFeed>(feedKey(env), 'json');
+async function readFeed(env: Env, bKey: string): Promise<StoredFeed | null> {
+  const stored = await env.BOARD.get<StoredFeed>(feedKeyFor(bKey), 'json');
   if (!stored || typeof stored.token !== 'string' || !stored.token) return null;
   return {
     token: stored.token,
     createdAt: typeof stored.createdAt === 'string' ? stored.createdAt : '',
-    // Options written before a later version added a field still read cleanly.
     options: normaliseOptions(stored.options),
+    boardKey: bKey,
   };
-}
-
-/** 32 random bytes, url-safe. Guessing one is not a thing that happens. */
-function mintToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 const feedUrl = (origin: string, token: string) => `${origin}/calendar/${token}.ics`;
 
-/** What the settings panel needs to draw the panel, link and all. */
 function feedReply(feed: StoredFeed | null, origin: string) {
   return {
     enabled: Boolean(feed),
@@ -191,20 +214,14 @@ function feedReply(feed: StoredFeed | null, origin: string) {
   };
 }
 
-/**
- * Creates, adjusts, rotates or removes the feed.
- *
- * Rotating mints a new token and drops the old one in the same write, so the
- * link someone was given stops working the moment you replace it — which is the
- * only revocation a URL-shaped credential can have.
- */
-async function handleFeedApi(request: Request, env: Env, origin: string): Promise<Response> {
-  const held = await readFeed(env);
+async function handleFeedApi(request: Request, env: Env, bKey: string, origin: string): Promise<Response> {
+  const held = await readFeed(env, bKey);
 
   if (request.method === 'GET') return json(feedReply(held, origin));
 
   if (request.method === 'DELETE') {
-    await env.BOARD.delete(feedKey(env));
+    if (held?.token) await env.BOARD.delete(`${FEED_INDEX_PREFIX}${held.token}`);
+    await env.BOARD.delete(feedKeyFor(bKey));
     return json(feedReply(null, origin));
   }
 
@@ -217,42 +234,40 @@ async function handleFeedApi(request: Request, env: Env, origin: string): Promis
     return json({ error: 'bad-json' }, 400);
   }
 
-  // A timezone the Worker cannot resolve would silently render every entry in
-  // UTC, which looks like the board losing an hour rather than a bad setting.
   const zone = typeof payload?.timeZone === 'string' ? payload.timeZone.trim() : '';
   if (zone && !isValidTimeZone(zone)) return json({ error: 'bad-timezone' }, 400);
 
+  const rotating = !held || Boolean(payload?.rotate);
+  if (rotating && held?.token) {
+    await env.BOARD.delete(`${FEED_INDEX_PREFIX}${held.token}`);
+  }
+
   const next: StoredFeed = {
-    token: held && !payload?.rotate ? held.token : mintToken(),
-    createdAt: held && !payload?.rotate ? held.createdAt : new Date().toISOString(),
+    token: !rotating && held ? held.token : randomToken(32),
+    createdAt: !rotating && held ? held.createdAt : new Date().toISOString(),
     options: normaliseOptions(payload, held?.options ?? DEFAULT_FEED_OPTIONS),
+    boardKey: bKey,
   };
-  await env.BOARD.put(feedKey(env), JSON.stringify(next));
+  await env.BOARD.put(feedKeyFor(bKey), JSON.stringify(next));
+  await env.BOARD.put(`${FEED_INDEX_PREFIX}${next.token}`, bKey);
   return json(feedReply(next, origin));
 }
 
-/**
- * Serves the feed itself, to a calendar client carrying no login at all.
- *
- * A wrong token is a 404 rather than a 401: there is nothing to log in *with*,
- * and saying "wrong token" to an address that is only ever guessed at confirms
- * that a feed exists to guess at.
- */
 async function handleFeed(request: Request, env: Env, token: string, origin: string): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return json({ error: 'method-not-allowed' }, 405, { allow: 'GET, HEAD' });
   }
 
-  const feed = await readFeed(env);
+  const indexedKey = await env.BOARD.get(`${FEED_INDEX_PREFIX}${token}`);
+  const targetBoardKey = indexedKey || defaultBoardKey(env);
+  const feed = await readFeed(env, targetBoardKey);
   if (!feed || !secretsMatch(token, feed.token)) return new Response('Not found', { status: 404 });
 
-  const stored = await readBoard(env);
+  const stored = await readBoard(env, targetBoardKey);
   const body = renderCalendar(stored?.board ?? {}, feed.options, { origin });
   const headers = {
     'content-type': 'text/calendar; charset=utf-8',
-    'content-disposition': `inline; filename="${boardKey(env)}.ics"`,
-    // Revalidate rather than re-download: a board that hasn't moved since the
-    // client last looked is one 304, however often Outlook decides to poll.
+    'content-disposition': `inline; filename="${targetBoardKey.replace(/[^a-zA-Z0-9_-]/g, '-')}.ics"`,
     'cache-control': 'no-cache, private',
     etag: `W/"${stored?.rev ?? 0}-${feed.createdAt}-${hash(JSON.stringify(feed.options))}"`,
   };
@@ -263,7 +278,6 @@ async function handleFeed(request: Request, env: Env, token: string, origin: str
   return new Response(request.method === 'HEAD' ? null : body, { headers });
 }
 
-/** Enough to tell one set of options from another in an ETag. */
 function hash(value: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < value.length; i++) {
@@ -273,67 +287,441 @@ function hash(value: string): string {
   return (h >>> 0).toString(36);
 }
 
+/* ---------- Auth, User & Workspace endpoints ---------- */
+
+async function handleAuthApi(request: Request, env: Env, path: string): Promise<Response> {
+  const baseKey = defaultBoardKey(env);
+
+  if (path === '/api/auth/setup' && request.method === 'POST') {
+    const users = await readUsers(env.BOARD);
+    if (Object.keys(users).length > 0) {
+      return json({ error: 'already-configured', message: 'An administrator account already exists. Please sign in.' }, 400);
+    }
+
+    let body: { email?: string; name?: string; password?: string };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return json({ error: 'bad-json' }, 400);
+    }
+
+    const email = (body.email ?? '').trim().toLowerCase();
+    const name = (body.name ?? '').trim() || email.split('@')[0] || 'Admin';
+    const password = body.password ?? '';
+
+    if (!email || !email.includes('@')) {
+      return json({ error: 'invalid-email', message: 'Enter a valid email address.' }, 400);
+    }
+    if (password.length < 6) {
+      return json({ error: 'weak-password', message: 'Password must be at least 6 characters.' }, 400);
+    }
+
+    const { salt, hash: passwordHash } = await hashPassword(password);
+    const user: StoredUser = {
+      id: randomId(),
+      email,
+      name: name.slice(0, 60),
+      role: 'admin',
+      colour: nextUserColour(0),
+      salt,
+      passwordHash,
+      createdAt: new Date().toISOString(),
+    };
+
+    const nextUsers = { [user.id]: user };
+    await writeUsers(env.BOARD, nextUsers);
+
+    let workspaces = await readWorkspaces(env.BOARD, baseKey);
+    workspaces = ensurePersonalWorkspace(user, workspaces);
+    await writeWorkspaces(env.BOARD, workspaces);
+
+    const session = await createSession(env.BOARD, user.id);
+    const pubUser = toPublicUser(user);
+    return json(
+      {
+        sessionToken: session.token,
+        user: pubUser,
+        workspaces: accessibleWorkspaces(user, workspaces),
+        users: [pubUser],
+      },
+      200,
+      { 'set-cookie': sessionCookieHeader(session.token, request.url) },
+    );
+  }
+
+  if (path === '/api/auth/login' && request.method === 'POST') {
+    let body: { email?: string; password?: string };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return json({ error: 'bad-json' }, 400);
+    }
+
+    const email = (body.email ?? '').trim().toLowerCase();
+    const password = body.password ?? '';
+    const users = await readUsers(env.BOARD);
+    const user = Object.values(users).find((u) => u.email.toLowerCase() === email);
+
+    if (!user || !(await verifyPassword(password, user.salt, user.passwordHash))) {
+      return json({ error: 'invalid-credentials', message: 'Incorrect email or password.' }, 401);
+    }
+
+    let workspaces = await readWorkspaces(env.BOARD, baseKey);
+    workspaces = ensurePersonalWorkspace(user, workspaces);
+    await writeWorkspaces(env.BOARD, workspaces);
+
+    const session = await createSession(env.BOARD, user.id);
+    const pubUser = toPublicUser(user);
+    return json(
+      {
+        sessionToken: session.token,
+        user: pubUser,
+        workspaces: accessibleWorkspaces(user, workspaces),
+        users: Object.values(users).map(toPublicUser),
+      },
+      200,
+      { 'set-cookie': sessionCookieHeader(session.token, request.url) },
+    );
+  }
+
+  if (path === '/api/auth/logout' && request.method === 'POST') {
+    const token = extractSessionToken(request);
+    if (token) await deleteSession(env.BOARD, token);
+    return json({ ok: true }, 200, { 'set-cookie': clearSessionCookieHeader(request.url) });
+  }
+
+  if (path === '/api/auth/profile' && request.method === 'POST') {
+    const verified = await verifySession(request, env.BOARD);
+    if (!verified) return json({ error: 'unauthorised' }, 401);
+
+    let body: { name?: string; colour?: string; currentPassword?: string; newPassword?: string };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return json({ error: 'bad-json' }, 400);
+    }
+
+    const { user, users } = verified;
+    const updated: StoredUser = { ...user };
+    if (typeof body.name === 'string' && body.name.trim()) {
+      updated.name = body.name.trim().slice(0, 60);
+    }
+    if (typeof body.colour === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.colour)) {
+      updated.colour = body.colour.toLowerCase();
+    }
+    if (body.newPassword) {
+      if (body.newPassword.length < 6) {
+        return json({ error: 'weak-password', message: 'New password must be at least 6 characters.' }, 400);
+      }
+      if (body.currentPassword && !(await verifyPassword(body.currentPassword, user.salt, user.passwordHash))) {
+        return json({ error: 'invalid-password', message: 'Current password did not match.' }, 400);
+      }
+      const { salt, hash: passwordHash } = await hashPassword(body.newPassword);
+      updated.salt = salt;
+      updated.passwordHash = passwordHash;
+    }
+
+    users[user.id] = updated;
+    await writeUsers(env.BOARD, users);
+    return json({ user: toPublicUser(updated), users: Object.values(users).map(toPublicUser) });
+  }
+
+  return json({ error: 'not-found' }, 404);
+}
+
+async function handleUsersApi(request: Request, env: Env, path: string): Promise<Response> {
+  const verified = await verifySession(request, env.BOARD);
+  if (!verified) return json({ error: 'unauthorised' }, 401);
+  const { user: currentUser, users } = verified;
+
+  if (path === '/api/users' && request.method === 'GET') {
+    return json({ users: Object.values(users).map(toPublicUser) });
+  }
+
+  if (currentUser.role !== 'admin') {
+    return json({ error: 'forbidden', message: 'Only administrators can manage team accounts.' }, 403);
+  }
+
+  if (path === '/api/users' && request.method === 'POST') {
+    let body: { email?: string; name?: string; password?: string; role?: UserRole; colour?: string };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return json({ error: 'bad-json' }, 400);
+    }
+
+    const email = (body.email ?? '').trim().toLowerCase();
+    const name = (body.name ?? '').trim() || email.split('@')[0] || 'Member';
+    const password = body.password ?? '';
+    const role: UserRole = body.role === 'admin' ? 'admin' : 'member';
+
+    if (!email || !email.includes('@')) {
+      return json({ error: 'invalid-email', message: 'Enter a valid email address.' }, 400);
+    }
+    if (Object.values(users).some((u) => u.email.toLowerCase() === email)) {
+      return json({ error: 'duplicate-email', message: 'A user with that email already exists.' }, 409);
+    }
+    if (password.length < 6) {
+      return json({ error: 'weak-password', message: 'Password must be at least 6 characters.' }, 400);
+    }
+
+    const { salt, hash: passwordHash } = await hashPassword(password);
+    const created: StoredUser = {
+      id: randomId(),
+      email,
+      name: name.slice(0, 60),
+      role,
+      colour:
+        typeof body.colour === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.colour)
+          ? body.colour.toLowerCase()
+          : nextUserColour(Object.keys(users).length),
+      salt,
+      passwordHash,
+      createdAt: new Date().toISOString(),
+    };
+
+    users[created.id] = created;
+    await writeUsers(env.BOARD, users);
+
+    const baseKey = defaultBoardKey(env);
+    let workspaces = await readWorkspaces(env.BOARD, baseKey);
+    workspaces = ensurePersonalWorkspace(created, workspaces);
+    await writeWorkspaces(env.BOARD, workspaces);
+
+    return json({
+      user: toPublicUser(created),
+      users: Object.values(users).map(toPublicUser),
+      workspaces: accessibleWorkspaces(currentUser, workspaces),
+    });
+  }
+
+  const match = /^\/api\/users\/([A-Za-z0-9_-]+)$/.exec(path);
+  if (!match) return json({ error: 'not-found' }, 404);
+  const targetId = match[1];
+  const target = users[targetId];
+  if (!target) return json({ error: 'not-found' }, 404);
+
+  if (request.method === 'PATCH') {
+    let body: { name?: string; role?: UserRole; colour?: string; password?: string };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return json({ error: 'bad-json' }, 400);
+    }
+
+    const updated: StoredUser = { ...target };
+    if (typeof body.name === 'string' && body.name.trim()) {
+      updated.name = body.name.trim().slice(0, 60);
+    }
+    if (body.role === 'admin' || body.role === 'member') {
+      const adminCount = Object.values(users).filter((u) => u.role === 'admin').length;
+      if (target.role === 'admin' && body.role !== 'admin' && adminCount <= 1) {
+        return json({ error: 'last-admin', message: 'Cannot demote the only administrator.' }, 400);
+      }
+      updated.role = body.role;
+    }
+    if (typeof body.colour === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.colour)) {
+      updated.colour = body.colour.toLowerCase();
+    }
+    if (typeof body.password === 'string' && body.password.length > 0) {
+      if (body.password.length < 6) {
+        return json({ error: 'weak-password', message: 'Password must be at least 6 characters.' }, 400);
+      }
+      const { salt, hash: passwordHash } = await hashPassword(body.password);
+      updated.salt = salt;
+      updated.passwordHash = passwordHash;
+    }
+
+    users[targetId] = updated;
+    await writeUsers(env.BOARD, users);
+    return json({ user: toPublicUser(updated), users: Object.values(users).map(toPublicUser) });
+  }
+
+  if (request.method === 'DELETE') {
+    const adminCount = Object.values(users).filter((u) => u.role === 'admin').length;
+    if (target.role === 'admin' && adminCount <= 1) {
+      return json({ error: 'last-admin', message: 'Cannot remove the last administrator.' }, 400);
+    }
+    delete users[targetId];
+    await writeUsers(env.BOARD, users);
+    return json({ users: Object.values(users).map(toPublicUser) });
+  }
+
+  return json({ error: 'method-not-allowed' }, 405);
+}
+
+async function handleWorkspacesApi(request: Request, env: Env, path: string): Promise<Response> {
+  const verified = await verifySession(request, env.BOARD);
+  if (!verified) return json({ error: 'unauthorised' }, 401);
+  const { user } = verified;
+  const baseKey = defaultBoardKey(env);
+  const workspaces = await readWorkspaces(env.BOARD, baseKey);
+
+  if (path === '/api/workspaces' && request.method === 'GET') {
+    return json({ workspaces: accessibleWorkspaces(user, workspaces) });
+  }
+
+  if (path === '/api/workspaces' && request.method === 'POST') {
+    let body: { name?: string; kind?: WorkspaceKind };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return json({ error: 'bad-json' }, 400);
+    }
+
+    const name = (body.name ?? '').trim().slice(0, 60);
+    if (!name) return json({ error: 'invalid-name', message: 'Enter a workspace name.' }, 400);
+
+    const kind: WorkspaceKind = body.kind === 'personal' ? 'personal' : 'team';
+    if (kind === 'team' && user.role !== 'admin') {
+      return json({ error: 'forbidden', message: 'Only administrators can create shared team workspaces.' }, 403);
+    }
+
+    const id = `${kind}-${randomId()}`;
+    const created: Workspace = {
+      id,
+      name,
+      kind,
+      ownerId: user.id,
+      memberIds: kind === 'team' ? ['*'] : [user.id],
+      boardKey: `ws:${id}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    workspaces[id] = created;
+    await writeWorkspaces(env.BOARD, workspaces);
+    return json({ workspace: created, workspaces: accessibleWorkspaces(user, workspaces) });
+  }
+
+  const match = /^\/api\/workspaces\/([A-Za-z0-9_-]+)$/.exec(path);
+  if (!match) return json({ error: 'not-found' }, 404);
+  const wsId = match[1];
+  const target = workspaces[wsId];
+  if (!target || !canAccessWorkspace(user, target)) return json({ error: 'not-found' }, 404);
+
+  if (request.method === 'PATCH') {
+    let body: { name?: string };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return json({ error: 'bad-json' }, 400);
+    }
+    if (typeof body.name === 'string' && body.name.trim()) {
+      target.name = body.name.trim().slice(0, 60);
+      workspaces[wsId] = target;
+      await writeWorkspaces(env.BOARD, workspaces);
+    }
+    return json({ workspace: target, workspaces: accessibleWorkspaces(user, workspaces) });
+  }
+
+  if (request.method === 'DELETE') {
+    if (wsId === 'default') {
+      return json({ error: 'cannot-delete-default', message: 'The default team board cannot be deleted.' }, 400);
+    }
+    if (target.kind === 'team' && user.role !== 'admin') {
+      return json({ error: 'forbidden', message: 'Only administrators can delete shared team boards.' }, 403);
+    }
+    delete workspaces[wsId];
+    await writeWorkspaces(env.BOARD, workspaces);
+    return json({ workspaces: accessibleWorkspaces(user, workspaces) });
+  }
+
+  return json({ error: 'method-not-allowed' }, 405);
+}
+
 async function handleApi(
   request: Request,
   env: Env,
   path: string,
   access: AccessResult | null,
 ): Promise<Response> {
-  // Deliberately open: it answers whether the Worker is up and what it expects
-  // you to log in with, and nothing about the board or about you. It is what
-  // you curl when the login itself is the thing that isn't working.
   if (path === '/api/health') {
+    const users = await readUsers(env.BOARD);
+    const hasUsers = Object.keys(users).length > 0;
     return json({
       ok: true,
-      configured: Boolean(env.BOARD_TOKEN) || accessConfigured(env),
+      configured: hasUsers || Boolean(env.BOARD_TOKEN) || accessConfigured(env),
+      setupRequired: !hasUsers,
       access: accessConfigured(env),
     });
   }
 
-  // Who the app is talking to, so it can say so and stop asking for a token
-  // it no longer needs. Only ever reports an identity that just verified.
   if (path === '/api/session') {
+    const baseKey = defaultBoardKey(env);
+    const users = await readUsers(env.BOARD);
+    const hasUsers = Object.keys(users).length > 0;
+    const workspaces = await readWorkspaces(env.BOARD, baseKey);
+
+    const sessionAuth = await verifySession(request, env.BOARD);
+    if (sessionAuth) {
+      const pubUser = toPublicUser(sessionAuth.user);
+      const userWorkspaces = accessibleWorkspaces(sessionAuth.user, workspaces);
+      const allUsers: PublicUser[] = Object.values(users).map(toPublicUser);
+      return json({
+        access: false,
+        signedIn: true,
+        setupRequired: false,
+        user: pubUser,
+        email: pubUser.email,
+        workspaces: userWorkspaces,
+        users: allUsers,
+        tokenRequired: false,
+        configured: true,
+      });
+    }
+
     return json({
       access: accessConfigured(env),
       signedIn: Boolean(access?.ok),
+      setupRequired: !hasUsers && !access?.ok,
+      user: null,
       email: access?.ok ? access.identity.email : null,
-      tokenRequired: !access?.ok && Boolean(env.BOARD_TOKEN),
-      configured: Boolean(env.BOARD_TOKEN) || accessConfigured(env),
+      workspaces: access?.ok ? Object.values(workspaces) : [],
+      users: [],
+      tokenRequired: !hasUsers && !access?.ok && Boolean(env.BOARD_TOKEN),
+      configured: hasUsers || Boolean(env.BOARD_TOKEN) || accessConfigured(env),
     });
   }
 
-  if (path === '/api/calendar') {
-    const allowed = authorise(request, env, access);
-    if (allowed instanceof Response) return allowed;
-    return handleFeedApi(request, env, new URL(request.url).origin);
+  if (path.startsWith('/api/auth/')) {
+    return handleAuthApi(request, env, path);
   }
 
-  // The attachment store. Files are kept per id rather than in the board blob
-  // — see `files.ts` — and guarded exactly as the board is: there is no reading
-  // someone's brief off a Worker you cannot read the board off.
+  if (path === '/api/users' || path.startsWith('/api/users/')) {
+    return handleUsersApi(request, env, path);
+  }
+
+  if (path === '/api/workspaces' || path.startsWith('/api/workspaces/')) {
+    return handleWorkspacesApi(request, env, path);
+  }
+
+  if (path === '/api/calendar') {
+    const caller = await resolveCaller(request, env, access);
+    if (caller instanceof Response) return caller;
+    return handleFeedApi(request, env, caller.boardKey, new URL(request.url).origin);
+  }
+
   if (path === '/api/files' || path.startsWith('/api/files/')) {
-    const allowed = authorise(request, env, access);
-    if (allowed instanceof Response) return allowed;
+    const caller = await resolveCaller(request, env, access);
+    if (caller instanceof Response) return caller;
 
     if (path === '/api/files') {
       if (request.method !== 'GET') return json({ error: 'method-not-allowed' }, 405, { allow: 'GET' });
-      return listFiles(env.BOARD, boardKey(env));
+      return listFiles(env.BOARD, caller.boardKey);
     }
 
     const id = fileIdFrom(path);
     if (!id) return json({ error: 'not-found' }, 404);
-    return handleFile(request, env.BOARD, boardKey(env), id);
+    return handleFile(request, env.BOARD, caller.boardKey, id);
   }
 
   if (path !== '/api/board') return json({ error: 'not-found' }, 404);
 
-  const allowed = authorise(request, env, access);
-  if (allowed instanceof Response) return allowed;
+  const caller = await resolveCaller(request, env, access);
+  if (caller instanceof Response) return caller;
 
   if (request.method === 'GET') {
-    const stored = await readBoard(env);
-    // 204 means "authorised, but nothing saved yet" — the client then pushes
-    // whatever it has locally instead of wiping itself.
+    const stored = await readBoard(env, caller.boardKey);
     return stored ? json(stored) : new Response(null, { status: 204 });
   }
 
@@ -348,7 +736,7 @@ async function handleApi(
       return json({ error: 'bad-board' }, 400);
     }
 
-    const stored = await readBoard(env);
+    const stored = await readBoard(env, caller.boardKey);
     const currentRev = stored?.rev ?? 0;
     const baseRev = Number.isFinite(payload.rev) ? Number(payload.rev) : 0;
 
@@ -361,66 +749,18 @@ async function handleApi(
       updatedAt: new Date().toISOString(),
       board: payload.board,
     };
-    await env.BOARD.put(env.BOARD_KEY || 'board', JSON.stringify(next));
+    await env.BOARD.put(caller.boardKey, JSON.stringify(next));
     return json({ rev: next.rev, updatedAt: next.updatedAt });
   }
 
   return json({ error: 'method-not-allowed' }, 405, { allow: 'GET, PUT' });
 }
 
-/**
- * The page shown when the app itself is asked for without an Access login.
- *
- * Access normally challenges before the request ever gets here, so reaching
- * this page means the request arrived by a route the Access application does
- * not cover. Sending it to the login would only loop, so it says what is
- * actually wrong instead.
- */
-function deniedPage(reason: 'missing' | 'expired' | 'invalid'): Response {
-  const heading = reason === 'expired' ? 'Your session has expired' : 'Sign-in required';
-  const detail =
-    reason === 'expired'
-      ? 'Reload this page and Cloudflare Access will sign you back in.'
-      : reason === 'invalid'
-        ? 'Your login was not accepted for this board. If it is yours, check the Access policy and the ACCESS_AUD value on the Worker.'
-        : 'This request did not come through Cloudflare Access. Open the board on its usual address — the one the Access application protects.';
-
-  return new Response(
-    `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${heading} — T-Card Planner</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px;
-         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-         background:#eef1f5; color:#1e2430; }
-  main { max-width:34rem; }
-  h1 { font-size:1.3rem; margin:0 0 .6em; }
-  p { margin:0 0 1em; color:#4a5568; }
-  @media (prefers-color-scheme: dark) { body { background:#161a20; color:#e6e9ee; } p { color:#9aa4b2; } }
-</style>
-<main><h1>${heading}</h1><p>${detail}</p></main>`,
-    { status: reason === 'expired' ? 401 : 403, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } },
-  );
-}
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (env.DEMO_MODE && !accessConfigured(env)) {
-      return json({ error: 'demo-auth-not-configured' }, 503);
-    }
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // The calendar feed, before anything else. A calendar client has no login
-    // to offer and no way to be asked for one: the unguessable token in the
-    // path is the whole of its credential, checked in `handleFeed`. Running the
-    // Access check here would only cost a round trip to refuse it — and with
-    // Access in front of the Worker the same is true at the edge, which is why
-    // `/calendar/*` needs a Bypass policy of its own. See the README.
-    //
-    // The whole prefix is the feed's, not only the links that parse: a
-    // truncated or mistyped one is a 404, rather than the app's own HTML handed
-    // to a calendar client that asked for a calendar.
     if (path.startsWith('/calendar/')) {
       const feedMatch = FEED_PATH.exec(path);
       return feedMatch
@@ -428,9 +768,6 @@ export default {
         : new Response('Not found', { status: 404 });
     }
 
-    // Cloudflare handles /cdn-cgi/access/* at the edge, so this only runs if
-    // the request somehow got past it. Sending sign-out on to the team domain
-    // means the button in the app works either way.
     if (path === '/cdn-cgi/access/logout' && env.ACCESS_TEAM_DOMAIN) {
       return Response.redirect(`https://${teamHost(env.ACCESS_TEAM_DOMAIN)}/cdn-cgi/access/logout`, 302);
     }
@@ -439,18 +776,11 @@ export default {
 
     if (path.startsWith('/api/')) {
       const response = await handleApi(request, env, path, access);
-      // Same-origin only: the app is served by this very Worker, so there is
-      // no reason to hand the API to another site. The reply depends on both
-      // credentials, so neither may be cached across callers.
-      response.headers.set('vary', 'authorization, cookie');
+      response.headers.set('vary', 'authorization, cookie, x-workspace-id');
       return response;
     }
 
-    // The app itself. With Access configured nothing is served without a valid
-    // login — not even the shell — so a Worker reachable on some address the
-    // Access application misses is a closed door rather than an open one.
-    if (access && !access.ok) return deniedPage(access.reason);
-
+    // Serve the SPA assets directly; authentication is handled in-app.
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;

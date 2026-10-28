@@ -52,6 +52,7 @@ import {
   useBoardActions,
   useCanUndo,
   useClientList,
+  usePastUnfinishedCount,
 } from './store/boardStore';
 import { useSettings, useSettingsActions } from './store/settingsStore';
 import { useUIActions, useUIStore } from './store/uiStore';
@@ -64,6 +65,7 @@ export default function App() {
   const board = useBoard((b) => b);
   const boardActions = useBoardActions();
   const canUndo = useCanUndo();
+  const pastUnfinishedCount = usePastUnfinishedCount();
 
   const settings = useSettings();
   const settingsActions = useSettingsActions();
@@ -191,6 +193,7 @@ export default function App() {
       categoryOrder: board.categoryOrder,
       updateCategories: board.updateCategories,
       updateCategoryOrder: board.updateCategoryOrder,
+      users: sync.users,
       showDescription: settings.showDescription,
     }),
     [
@@ -200,6 +203,7 @@ export default function App() {
       board.categoryOrder,
       board.updateCategories,
       board.updateCategoryOrder,
+      sync.users,
       settings.showDescription,
     ],
   );
@@ -286,6 +290,9 @@ export default function App() {
             onOpenSettings={() => uiActions.setShowSettings(true)}
             canUndo={canUndo && !locked}
             onUndo={boardActions.undo}
+            pastUnfinishedCount={!locked ? pastUnfinishedCount : 0}
+            onRolloverPast={() => boardActions.rolloverPastCards()}
+            onSelectCard={uiActions.setOpenCardId}
             searchRef={searchRef}
             clients={clientList}
             clientFilter={ui.clientFilter}
@@ -406,6 +413,8 @@ export default function App() {
                 months={months}
                 clients={board.clients}
                 onMonth={(id, invoiceMonth) => boardActions.patchProject(id, { invoiceMonth })}
+                onMilestoneMonth={boardActions.patchMilestoneMonth}
+                onMilestoneStatus={boardActions.patchMilestoneStatus}
                 onOpenProject={uiActions.openProjectFrom}
                 locked={locked}
               />
@@ -453,6 +462,7 @@ export default function App() {
 
           {ui.showSettings && (
             <SettingsDialog
+              sync={sync}
               m365={m365}
               feed={feed}
               onClose={() => uiActions.setShowSettings(false)}

@@ -2,6 +2,7 @@ import {
   BACKLOG,
   CATEGORY_PALETTE,
   CLIENT_PALETTE,
+  type BillingBucket,
   type BoardState,
   type Card,
   type CardUpdate,
@@ -29,6 +30,7 @@ import {
   newProject,
   newUpdateCategory,
   normalise,
+  pastUnfinishedCards,
   projectsOfClient,
   reducer,
   save,
@@ -40,22 +42,34 @@ import { todayKey } from '../dates';
 import { createStore } from './createStore';
 
 const HISTORY_LIMIT = 40;
+export const WORKSPACE_STORAGE_KEY = 'tcard-planner.workspace';
+
+function readStoredWorkspaceId(): string {
+  try {
+    return localStorage.getItem(WORKSPACE_STORAGE_KEY)?.trim() || 'default';
+  } catch {
+    return 'default';
+  }
+}
 
 interface BoardStoreState {
+  workspaceId: string;
   board: BoardState;
   past: BoardState[];
   canUndo: boolean;
 }
 
-const initialBoard = load();
+const initialWorkspaceId = readStoredWorkspaceId();
+const initialBoard = load(initialWorkspaceId);
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-function scheduleSave(board: BoardState) {
+function scheduleSave(board: BoardState, workspaceId = boardStore.getState().workspaceId) {
   if (saveTimeout) clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => save(board), 200);
+  saveTimeout = setTimeout(() => save(board, workspaceId), 200);
 }
 
 export const boardStore = createStore<BoardStoreState>({
+  workspaceId: initialWorkspaceId,
   board: initialBoard,
   past: [],
   canUndo: false,
@@ -63,6 +77,33 @@ export const boardStore = createStore<BoardStoreState>({
 
 export function getBoardState(): BoardState {
   return boardStore.getState().board;
+}
+
+export function getActiveWorkspaceId(): string {
+  return boardStore.getState().workspaceId;
+}
+
+export function switchWorkspaceBoard(workspaceId: string): void {
+  const nextId = workspaceId.trim() || 'default';
+  const current = boardStore.getState();
+  if (current.workspaceId === nextId) return;
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+  save(current.board, current.workspaceId);
+  try {
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, nextId);
+  } catch {
+    // Ignore storage failures.
+  }
+  const nextBoard = load(nextId);
+  boardStore.setState({
+    workspaceId: nextId,
+    board: nextBoard,
+    past: [],
+    canUndo: false,
+  });
 }
 
 export function snapshotBoard(): void {
@@ -80,17 +121,17 @@ export function dispatchBoardAction(action: Action, shouldSnapshot = false): voi
   }
   const next = reducer(current.board, action);
   if (next !== current.board) {
-    scheduleSave(next);
+    scheduleSave(next, current.workspaceId);
     boardStore.setState({ board: next });
   }
 }
 
 export function undoBoardAction(): void {
-  const { past } = boardStore.getState();
+  const { past, workspaceId } = boardStore.getState();
   const previous = past[past.length - 1];
   if (!previous) return;
   const nextPast = past.slice(0, -1);
-  scheduleSave(previous);
+  scheduleSave(previous, workspaceId);
   boardStore.setState({
     board: previous,
     past: nextPast,
@@ -99,13 +140,13 @@ export function undoBoardAction(): void {
 }
 
 export function swapRemoteBoard(incoming: BoardState): void {
-  const current = boardStore.getState().board;
+  const { board: current, workspaceId } = boardStore.getState();
   const stranded = [...current.orphanedEvents, ...strandedEvents(current, incoming)];
   let next = incoming;
   if (stranded.length > 0) {
     next = reducer(next, { type: 'orphanEvents', ids: stranded });
   }
-  scheduleSave(next);
+  scheduleSave(next, workspaceId);
   boardStore.setState({ board: next });
 }
 
@@ -117,6 +158,10 @@ export function useBoard<T>(selector: (board: BoardState) => T): T {
 
 export function useCanUndo(): boolean {
   return boardStore.useStore((s) => s.canUndo);
+}
+
+export function usePastUnfinishedCount(today = todayKey()): number {
+  return boardStore.useStore((s) => pastUnfinishedCards(s.board, today).length);
 }
 
 export function useCard(id: string | null): Card | null {
@@ -223,6 +268,18 @@ export function useBoardActions() {
       dispatchBoardAction({ type: 'move', id, lane, index });
     },
 
+    rolloverPastCards: (fromLane?: LaneId) => {
+      const today = todayKey();
+      const board = getBoardState();
+      const count = pastUnfinishedCards(board, today).filter(
+        ({ lane }) => !fromLane || lane === fromLane,
+      ).length;
+      if (count === 0) return 0;
+      snapshotBoard();
+      dispatchBoardAction({ type: 'rolloverPast', today, fromLane });
+      return count;
+    },
+
     // Projects
     createProject: (title: string, defaultCategoryId: CategoryId) => {
       const project = newProject(title, { colour: defaultCategoryId });
@@ -232,6 +289,24 @@ export function useBoardActions() {
 
     patchProject: (id: string, patch: Partial<Project>) => {
       dispatchBoardAction({ type: 'updateProject', id, patch });
+    },
+
+    patchMilestoneMonth: (projectId: string, milestoneId: string, invoiceMonth: string | null) => {
+      const project = getBoardState().projects[projectId];
+      if (!project) return;
+      const milestones = project.milestones.map((ms) =>
+        ms.id === milestoneId ? { ...ms, invoiceMonth } : ms,
+      );
+      dispatchBoardAction({ type: 'updateProject', id: projectId, patch: { milestones } });
+    },
+
+    patchMilestoneStatus: (projectId: string, milestoneId: string, status: BillingBucket) => {
+      const project = getBoardState().projects[projectId];
+      if (!project) return;
+      const milestones = project.milestones.map((ms) =>
+        ms.id === milestoneId ? { ...ms, status } : ms,
+      );
+      dispatchBoardAction({ type: 'updateProject', id: projectId, patch: { milestones } });
     },
 
     deleteProject: (id: string) => {
@@ -320,11 +395,11 @@ export function useBoardActions() {
     },
 
     // Card updates (work logs)
-    addCardUpdate: (cardId: string, categoryId: string, minutes: number, note: string) => {
+    addCardUpdate: (cardId: string, categoryId: string, minutes: number, note: string, date?: string) => {
       dispatchBoardAction({
         type: 'addUpdate',
         cardId,
-        update: newCardUpdate(categoryId, minutes, note),
+        update: newCardUpdate(categoryId, minutes, note, date),
       });
     },
 

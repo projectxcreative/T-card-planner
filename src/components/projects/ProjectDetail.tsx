@@ -17,6 +17,7 @@ import { useCategories } from '../../categories';
 import { useLookups } from '../../lookups';
 import ValueField from './ValueField';
 import ExpensesSection from './ExpensesSection';
+import MilestonesSection from './MilestonesSection';
 import ProjectCardsSection from './ProjectCardsSection';
 import ProjectStats, { type Tally } from './ProjectStats';
 
@@ -163,6 +164,20 @@ export default function ProjectDetail({
             <ValueField project={project} onPatch={onPatch} />
 
             <label className="field">
+              <span className="field-label">Hour budget</span>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={project.budgetHours || ''}
+                placeholder="0 h"
+                onChange={(event) =>
+                  onPatch(project.id, { budgetHours: Math.max(0, Number(event.target.value) || 0) })
+                }
+              />
+            </label>
+
+            <label className="field">
               <span className="field-label">Invoice month</span>
               <select
                 value={project.invoiceMonth ?? ''}
@@ -226,6 +241,8 @@ export default function ProjectDetail({
               </span>
             )}
           </label>
+
+          <MilestonesSection project={project} onPatch={onPatch} />
 
           <ExpensesSection project={project} onPatch={onPatch} />
 
