@@ -139,15 +139,31 @@ export function undoBoardAction(): void {
   });
 }
 
+export const BACKUP_STORAGE_KEY = 'tcard-planner.board.backup.v1';
+
 export function swapRemoteBoard(incoming: BoardState): void {
-  const { board: current, workspaceId } = boardStore.getState();
+  const { board: current, past, workspaceId } = boardStore.getState();
+  try {
+    if (Object.keys(current.cards).length > 0) {
+      localStorage.setItem(
+        `${BACKUP_STORAGE_KEY}:${workspaceId}`,
+        JSON.stringify({ savedAt: new Date().toISOString(), board: current }),
+      );
+    }
+  } catch {
+    // Ignore storage quota errors on backup.
+  }
   const stranded = [...current.orphanedEvents, ...strandedEvents(current, incoming)];
   let next = incoming;
   if (stranded.length > 0) {
     next = reducer(next, { type: 'orphanEvents', ids: stranded });
   }
   scheduleSave(next, workspaceId);
-  boardStore.setState({ board: next });
+  boardStore.setState({
+    board: next,
+    past: [...past, current].slice(-HISTORY_LIMIT),
+    canUndo: true,
+  });
 }
 
 /* ---------- hooks for specific slices ---------- */

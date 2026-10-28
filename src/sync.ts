@@ -291,7 +291,12 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
       const remote = (await response.json()) as { rev: number; updatedAt: string; board: unknown };
 
       if (remote.rev === meta.current.rev) {
-        if (!meta.current.dirty) setStatus('idle');
+        if (meta.current.dirty) {
+          inFlight.current = false;
+          await push(boardRef.current);
+          return;
+        }
+        setStatus('idle');
         return;
       }
 
@@ -372,11 +377,12 @@ export function useSync(board: BoardState, adopt: (state: BoardState) => void): 
     });
   }, [session, signedIn, token, sessionToken]);
 
-  // Local edits: mark dirty and push, once the dust settles.
+  // Local edits: always mark dirty (even while signed out or offline so
+  // reconnecting never silently overwrites local work), and push when enabled.
   useEffect(() => {
-    if (!enabled || board === synced.current) return;
+    if (board === synced.current) return;
     if (!meta.current.dirty) writeMeta({ dirty: true });
-    if (status === 'conflict') return;
+    if (!enabled || status === 'conflict') return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => push(board), PUSH_DEBOUNCE_MS);
     return () => {

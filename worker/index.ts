@@ -671,12 +671,12 @@ async function handleApi(
     }
 
     return json({
-      access: accessConfigured(env),
-      signedIn: Boolean(access?.ok),
-      setupRequired: !hasUsers && !access?.ok,
+      access: !hasUsers ? false : accessConfigured(env),
+      signedIn: hasUsers ? Boolean(access?.ok) : false,
+      setupRequired: !hasUsers,
       user: null,
       email: access?.ok ? access.identity.email : null,
-      workspaces: access?.ok ? Object.values(workspaces) : [],
+      workspaces: Object.values(workspaces),
       users: [],
       tokenRequired: !hasUsers && !access?.ok && Boolean(env.BOARD_TOKEN),
       configured: hasUsers || Boolean(env.BOARD_TOKEN) || accessConfigured(env),
