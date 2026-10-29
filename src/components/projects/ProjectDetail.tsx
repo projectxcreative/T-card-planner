@@ -161,6 +161,54 @@ export default function ProjectDetail({
               </select>
             </label>
 
+            <label className="field">
+              <span className="field-label">Client</span>
+              {clientOrder.length === 0 ? (
+                <select disabled value="">
+                  <option value="">No clients yet</option>
+                </select>
+              ) : (
+                <span
+                  className="picker"
+                  style={activeClient ? ({ '--c': activeClient.colour } as React.CSSProperties) : undefined}
+                >
+                  {activeClient && <span className="picker-dot" aria-hidden="true" />}
+                  <select
+                    className={activeClient ? 'picker-select' : undefined}
+                    value={project.clientId ?? ''}
+                    onChange={(event) => onPatch(project.id, { clientId: event.target.value || null })}
+                  >
+                    <option value="">No client</option>
+                    {clientOrder.map((id) => (
+                      <option key={id} value={id}>
+                        {clients[id].name}
+                      </option>
+                    ))}
+                  </select>
+                </span>
+              )}
+            </label>
+
+            <label className="field">
+              <span className="field-label">Category</span>
+              <span className={`picker c-${project.colour}`}>
+                <span className="picker-dot" aria-hidden="true" />
+                <select
+                  className="picker-select"
+                  value={project.colour}
+                  onChange={(event) => onPatch(project.id, { colour: event.target.value as CategoryId })}
+                >
+                  {categoryOrder.map((id) => (
+                    <option key={id} value={id}>
+                      {categoryLabel(categories, id)}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </label>
+          </div>
+
+          <div className="field-row">
             <ValueField project={project} onPatch={onPatch} />
 
             <label className="field">
@@ -181,6 +229,11 @@ export default function ProjectDetail({
               <span className="field-label">Invoice month</span>
               <select
                 value={project.invoiceMonth ?? ''}
+                title={
+                  project.milestones.length > 0
+                    ? 'Staged billing milestones below control each invoice month on the Billing view'
+                    : undefined
+                }
                 onChange={(event) => onPatch(project.id, { invoiceMonth: event.target.value || null })}
               >
                 <option value="">Not yet</option>
@@ -196,69 +249,6 @@ export default function ProjectDetail({
             </label>
           </div>
 
-          <div className="field-row">
-            <label className="field">
-              <span className="field-label">Category</span>
-              <span className={`picker c-${project.colour}`}>
-                <span className="picker-dot" aria-hidden="true" />
-                <select
-                  className="picker-select"
-                  value={project.colour}
-                  onChange={(event) => onPatch(project.id, { colour: event.target.value as CategoryId })}
-                >
-                  {categoryOrder.map((id) => (
-                    <option key={id} value={id}>
-                      {categoryLabel(categories, id)}
-                    </option>
-                  ))}
-                </select>
-              </span>
-            </label>
-          </div>
-
-          <label className="field">
-            <span className="field-label">Client</span>
-            {clientOrder.length === 0 ? (
-              <p className="field-note">No clients yet — add them in the Clients view, or under Settings.</p>
-            ) : (
-              <span
-                className="picker"
-                style={activeClient ? ({ '--c': activeClient.colour } as React.CSSProperties) : undefined}
-              >
-                {activeClient && <span className="picker-dot" aria-hidden="true" />}
-                <select
-                  className={activeClient ? 'picker-select' : undefined}
-                  value={project.clientId ?? ''}
-                  onChange={(event) => onPatch(project.id, { clientId: event.target.value || null })}
-                >
-                  <option value="">No client</option>
-                  {clientOrder.map((id) => (
-                    <option key={id} value={id}>
-                      {clients[id].name}
-                    </option>
-                  ))}
-                </select>
-              </span>
-            )}
-          </label>
-
-          <MilestonesSection project={project} onPatch={onPatch} />
-
-          <ExpensesSection project={project} onPatch={onPatch} />
-
-          <div className="field">
-            <span className="field-label">Description</span>
-            <ProjectDescription key={project.id} project={project} onPatch={onPatch} />
-          </div>
-
-          <div className="field">
-            <span className="field-label">Files</span>
-            <Attachments
-              attachments={project.attachments}
-              onChange={(next: Attachment[]) => onPatch(project.id, { attachments: next })}
-            />
-          </div>
-
           <ProjectCardsSection
             project={project}
             cards={cards}
@@ -269,6 +259,23 @@ export default function ProjectDetail({
             onMoveCard={onMoveCard}
             onAttachCard={onAttachCard}
           />
+
+          <div className="field">
+            <span className="field-label">Description</span>
+            <ProjectDescription key={project.id} project={project} onPatch={onPatch} />
+          </div>
+
+          <MilestonesSection project={project} onPatch={onPatch} />
+
+          <ExpensesSection project={project} onPatch={onPatch} />
+
+          <div className="field">
+            <span className="field-label">Files</span>
+            <Attachments
+              attachments={project.attachments}
+              onChange={(next: Attachment[]) => onPatch(project.id, { attachments: next })}
+            />
+          </div>
         </div>
       </section>
     </div>

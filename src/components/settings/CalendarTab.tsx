@@ -4,7 +4,6 @@ import { webcalOf } from '../../feed';
 import type { M365 } from '../../m365';
 import { hasBuiltInApp, redirectUri } from '../../m365';
 import { useSettings, useSettingsActions } from '../../store/settingsStore';
-import type { Settings } from '../../types';
 
 interface CalendarTabProps {
   m365: M365;
@@ -323,32 +322,6 @@ export default function CalendarTab({ m365, feed }: CalendarTabProps) {
               updateSettings({ dayEnd: hour, dayStart: Math.min(settings.dayStart, hour - 1) });
             }}
           />
-        </label>
-
-        <label className="settings-row">
-          <span>
-            Dark theme
-            <span className="settings-hint">Also on the toolbar</span>
-          </span>
-          <input
-            type="checkbox"
-            checked={settings.theme === 'dark'}
-            onChange={(event) => updateSettings({ theme: event.target.checked ? 'dark' : 'light' })}
-          />
-        </label>
-
-        <label className="settings-row">
-          <span>
-            Skin
-            <span className="settings-hint">Shape and type, independent of light and dark</span>
-          </span>
-          <select
-            value={settings.skin}
-            onChange={(event) => updateSettings({ skin: event.target.value as Settings['skin'] })}
-          >
-            <option value="default">Default</option>
-            <option value="draft">Draft</option>
-          </select>
         </label>
       </section>
 

@@ -457,6 +457,64 @@ function CardBody(props: CardPanelProps) {
         </div>
       </div>
 
+      <div className="field">
+        <span className="field-label">Description</span>
+        <Suspense fallback={<div className="rt rt-loading" />}>
+          <RichText value={html} onChange={setHtml} onAttach={(files) => void attach(files)} />
+        </Suspense>
+      </div>
+
+      <div className="field-group">
+        <div className="field-row">
+          <label className="field">
+            <span className="field-label">Day</span>
+            <input
+              type="date"
+              value={scheduled}
+              onChange={(event) => onMove(card.id, event.target.value || BACKLOG)}
+            />
+          </label>
+
+          <label className="field">
+            <span className="field-label">Start</span>
+            <input
+              type="time"
+              step={900}
+              value={toTimeValue(card.start)}
+              disabled={lane === BACKLOG}
+              title={lane === BACKLOG ? 'Put the card on a day first' : 'Where it sits on the day view'}
+              onChange={(event) => onPatch(card.id, { start: fromTimeValue(event.target.value) })}
+            />
+          </label>
+
+          <label className="field">
+            <span className="field-label">Size</span>
+            <select
+              value={card.estimate}
+              onChange={(event) => onPatch(card.id, { estimate: Number(event.target.value) })}
+            >
+              {ESTIMATES.map((hours) => (
+                <option key={hours} value={hours}>
+                  {hours === 0 ? 'Unsized' : hours < 1 ? `${hours * 60} min` : `${hours} h`}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="quick-days">
+          <button type="button" className="ghost" onClick={() => onMove(card.id, todayKey())}>
+            Today
+          </button>
+          <button type="button" className="ghost" onClick={() => onMove(card.id, addDays(todayKey(), 1))}>
+            Tomorrow
+          </button>
+          <button type="button" className="ghost" onClick={() => onMove(card.id, BACKLOG)} disabled={lane === BACKLOG}>
+            Backlog
+          </button>
+        </div>
+      </div>
+
       <div className="field-row">
         <label className="field">
           <span className="field-label">Category</span>
@@ -476,6 +534,44 @@ function CardBody(props: CardPanelProps) {
           </span>
         </label>
 
+        <label className="field">
+          <span className="field-label">Project</span>
+          <select
+            value={card.projectId ?? ''}
+            onChange={(event) => onPatch(card.id, { projectId: event.target.value || null })}
+          >
+            <option value="">No project</option>
+            {openProjects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="field-row">
+        <label className="field">
+          <span className="field-label">Due date</span>
+          <div className="due-input-row">
+            <input
+              type="date"
+              value={card.dueDate ?? ''}
+              onChange={(event) => onPatch(card.id, { dueDate: event.target.value || null })}
+            />
+            {card.dueDate && (
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => onPatch(card.id, { dueDate: null })}
+                title="Clear due date"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </label>
+
         {(users.length > 0 || card.assigneeId) && (
           <label className="field">
             <span className="field-label">Assignee</span>
@@ -493,21 +589,6 @@ function CardBody(props: CardPanelProps) {
           </label>
         )}
       </div>
-
-      <label className="field">
-        <span className="field-label">Project</span>
-        <select
-          value={card.projectId ?? ''}
-          onChange={(event) => onPatch(card.id, { projectId: event.target.value || null })}
-        >
-          <option value="">No project</option>
-          {openProjects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.title}
-            </option>
-          ))}
-        </select>
-      </label>
 
       <div className="field">
         <span className="field-label">Clients</span>
@@ -535,78 +616,6 @@ function CardBody(props: CardPanelProps) {
         )}
       </div>
 
-      <div className="field-row">
-        <label className="field">
-          <span className="field-label">Size</span>
-          <select
-            value={card.estimate}
-            onChange={(event) => onPatch(card.id, { estimate: Number(event.target.value) })}
-          >
-            {ESTIMATES.map((hours) => (
-              <option key={hours} value={hours}>
-                {hours === 0 ? 'Unsized' : hours < 1 ? `${hours * 60} min` : `${hours} h`}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span className="field-label">Day</span>
-          <input
-            type="date"
-            value={scheduled}
-            onChange={(event) => onMove(card.id, event.target.value || BACKLOG)}
-          />
-        </label>
-
-        <label className="field">
-          <span className="field-label">Start</span>
-          <input
-            type="time"
-            step={900}
-            value={toTimeValue(card.start)}
-            disabled={lane === BACKLOG}
-            title={lane === BACKLOG ? 'Put the card on a day first' : 'Where it sits on the day view'}
-            onChange={(event) => onPatch(card.id, { start: fromTimeValue(event.target.value) })}
-          />
-        </label>
-      </div>
-
-      <div className="field-row">
-        <label className="field">
-          <span className="field-label">Due date</span>
-          <div className="due-input-row">
-            <input
-              type="date"
-              value={card.dueDate ?? ''}
-              onChange={(event) => onPatch(card.id, { dueDate: event.target.value || null })}
-            />
-            {card.dueDate && (
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => onPatch(card.id, { dueDate: null })}
-                title="Clear due date"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        </label>
-      </div>
-
-      <div className="quick-days">
-        <button type="button" className="ghost" onClick={() => onMove(card.id, todayKey())}>
-          Today
-        </button>
-        <button type="button" className="ghost" onClick={() => onMove(card.id, addDays(todayKey(), 1))}>
-          Tomorrow
-        </button>
-        <button type="button" className="ghost" onClick={() => onMove(card.id, BACKLOG)} disabled={lane === BACKLOG}>
-          Backlog
-        </button>
-      </div>
-
       <UpdatesSection
         card={card}
         locked={locked}
@@ -614,6 +623,11 @@ function CardBody(props: CardPanelProps) {
         onPatchUpdate={onPatchUpdate}
         onDeleteUpdate={onDeleteUpdate}
       />
+
+      <div className="field">
+        <span className="field-label">Files</span>
+        <Attachments attachments={card.attachments} onChange={setAttachments} locked={locked} />
+      </div>
 
       {/* Publishing needs a day to publish to, so the box stays out of reach
           until the card has one — and says why rather than just greying out. */}
@@ -635,18 +649,6 @@ function CardBody(props: CardPanelProps) {
           onChange={(event) => onPatch(card.id, { publish: event.target.checked })}
         />
       </label>
-
-      <div className="field">
-        <span className="field-label">Description</span>
-        <Suspense fallback={<div className="rt rt-loading" />}>
-          <RichText value={html} onChange={setHtml} onAttach={(files) => void attach(files)} />
-        </Suspense>
-      </div>
-
-      <div className="field">
-        <span className="field-label">Files</span>
-        <Attachments attachments={card.attachments} onChange={setAttachments} locked={locked} />
-      </div>
     </div>
   );
 }

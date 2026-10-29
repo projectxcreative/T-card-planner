@@ -86,9 +86,9 @@ export default function TopBar(props: Props) {
   const timer = useActiveTimer();
   const timedCard = useCard(timer.cardId);
 
-  // Projects and clients aren't stretches of time, so there is nothing for the
-  // arrows to step over while they're on screen.
-  const dated = view !== 'projects' && view !== 'clients';
+  // Projects, clients and billing aren't stretches of time on the calendar,
+  // so there is nothing for the arrows to step over while they're on screen.
+  const dated = view === 'week' || view === 'day' || view === 'month';
   // Nor is there a board to narrow while one of them is up.
   const filterable = dated;
   // Only the week and the month draw columns the weekend could be one of.
@@ -245,7 +245,7 @@ export default function TopBar(props: Props) {
             everything else that used to sit here lives in Settings now. */}
         <button
           type="button"
-          className="ghost"
+          className="ghost icon"
           onClick={() => onSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
           title="Switch theme"
           aria-label="Switch theme"

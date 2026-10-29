@@ -66,6 +66,36 @@ export default function CardsTab() {
         </label>
       </section>
 
+      <section className="settings-section">
+        <h3 className="settings-title">Appearance</h3>
+
+        <label className="settings-row">
+          <span>
+            Dark theme
+            <span className="settings-hint">Also on the toolbar</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={settings.theme === 'dark'}
+            onChange={(event) => updateSettings({ theme: event.target.checked ? 'dark' : 'light' })}
+          />
+        </label>
+
+        <label className="settings-row">
+          <span>
+            Skin
+            <span className="settings-hint">Shape and type, independent of light and dark</span>
+          </span>
+          <select
+            value={settings.skin}
+            onChange={(event) => updateSettings({ skin: event.target.value as Settings['skin'] })}
+          >
+            <option value="default">Default</option>
+            <option value="draft">Draft</option>
+          </select>
+        </label>
+      </section>
+
       <UpdateCategoriesTab />
     </>
   );

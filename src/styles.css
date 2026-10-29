@@ -118,7 +118,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .board { grid-row: 4; grid-column: 1; }
 
-.app.has-drawer { grid-template-columns: minmax(0, 1fr) 380px; }
+.app.has-drawer { grid-template-columns: minmax(0, 1fr) 420px; }
 .app.has-drawer .topbar,
 .app.has-drawer .calendar-banner,
 .app.has-drawer .conflict { grid-column: 1 / -1; }
@@ -126,7 +126,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- top bar ---------- */
 
 .topbar {
-  padding: 10px 16px;
+  padding: 8px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
@@ -135,7 +135,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .topbar-inner {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
   flex-wrap: wrap;
   max-width: var(--shell-max);
   margin-inline: auto;
@@ -155,15 +155,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand-name { white-space: nowrap; }
 
 .weeknav { display: flex; align-items: center; gap: 4px; }
-.weekrange { margin-left: 8px; color: var(--text-dim); white-space: nowrap; }
+.weekrange { margin-left: 4px; color: var(--text-dim); font-size: var(--t-body); white-space: nowrap; }
 
-.topbar-tools { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.topbar-tools { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
 
 .ghost {
   background: transparent;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 5px 10px;
+  padding: 5px 9px;
   cursor: pointer;
   color: var(--text-dim);
   transition: background 120ms, color 120ms, border-color 120ms;
@@ -180,14 +180,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ghost.icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; }
 
 .search {
-  width: 190px;
+  width: 148px;
   padding: 5px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-2);
+  transition: width 160ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-.search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.search:focus-visible { width: 196px; outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ---------- board ---------- */
 
@@ -554,11 +555,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .drawer-title::placeholder { color: var(--text-faint); }
 
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field-group { display: flex; flex-direction: column; gap: 8px; }
 .field-row { display: flex; gap: 12px; }
 .field-row .field { flex: 1; }
 .field-label { font-size: var(--t-meta); font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-faint); }
 
-.field select, .field input[type='date'] {
+.field select,
+.field input[type='date'],
+.field input[type='time'],
+.field input[type='number'],
+.field input[type='text'] {
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -799,7 +805,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   animation: rise 180ms cubic-bezier(0.2, 0, 0, 1) both;
   display: flex;
   flex-direction: column;
-  width: min(520px, 100%);
+  width: min(620px, 100%);
   max-height: min(84vh, 760px);
   background: var(--surface);
   border: 1px solid var(--line);
@@ -826,7 +832,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .settings-head .ghost { margin-left: auto; padding: 3px 8px; font-size: var(--t-body); }
 .settings-head .settings-title { margin: 0; }
 
-.settings-title {
+.settings-title,
+.settings-sub {
   margin: 0;
   font-size: var(--t-meta);
   font-weight: 650;
@@ -866,7 +873,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .cat-colour::-webkit-color-swatch { border: 0; border-radius: var(--radius-xs); }
 .cat-colour::-moz-color-swatch { border: 0; border-radius: var(--radius-xs); }
 
-.cat-label {
+.cat-label,
+.cat-input {
   flex: 1;
   min-width: 0;
   padding: 5px 8px;
@@ -875,7 +883,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--surface);
 }
 
-.cat-label:focus-visible, .settings-number:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cat-label:focus-visible,
+.cat-input:focus-visible,
+.settings-number:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .cat-count {
   flex: none;
@@ -907,13 +917,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--surface-2);
 }
 
-.settings-actions { display: flex; gap: 8px; }
+.settings-actions,
+.cat-add { display: flex; align-items: center; gap: 8px; }
 .settings-actions .ghost { flex: 1; }
 
 /* The settings dialog's own tabs — same look as the board's view tabs, just
    pinned above the scrolling body rather than in the top bar. */
 .settings-tabbar { padding: 10px 14px 0; border-bottom: 1px solid var(--line-soft); }
-.settings-tabbar .viewtabs { width: fit-content; }
+.settings-tabbar .viewtabs { width: fit-content; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.settings-tabbar .viewtabs::-webkit-scrollbar { display: none; }
 
 /* ---------- card updates ---------- */
 
@@ -926,8 +938,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .upd-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  padding: 5px 8px;
+  padding: 6px 8px;
   background: var(--surface-2);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
@@ -936,8 +949,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .upd-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--chip); }
 
 .upd-category {
-  flex: none;
-  width: 132px;
+  flex: 1 1 116px;
+  min-width: 0;
   padding: 5px 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -955,7 +968,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 .upd-note {
-  flex: 1;
+  flex: 1 1 100%;
   min-width: 0;
   padding: 5px 8px;
   border: 1px solid var(--line);
@@ -965,9 +978,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .upd-remove { flex: none; padding: 2px 7px; }
 
-/* The add-a-line row underneath: same controls, no border of their own. */
-.upd-add { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
-.upd-add select { flex: none; width: 132px; padding: 5px 6px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); }
+/* The add-a-line row underneath: same controls, wrapped onto two clean lines. */
+.upd-add { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.upd-add select { flex: 1 1 116px; min-width: 0; padding: 5px 6px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); }
 
 /* ---------- narrow screens ---------- */
 
@@ -1265,7 +1278,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   margin-inline: auto;
 }
 
-.dayview { display: flex; flex-direction: column; gap: 12px; min-height: 100%; }
+.dayview { display: flex; flex-direction: column; gap: 12px; min-height: 100%; max-width: 1360px; width: 100%; }
 
 .dayview-head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 .dayview-title { margin: 0; font-size: var(--t-title); font-weight: 650; letter-spacing: -0.015em; }
@@ -1341,7 +1354,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .timeline-rule { position: absolute; left: 0; right: 0; height: 1px; background: var(--line-soft); }
 
-.timeline-now { position: absolute; left: 0; right: 0; height: 2px; background: var(--danger); z-index: 3; }
+.timeline-now { position: absolute; left: 0; right: 0; height: 2px; background: var(--danger); z-index: 2; pointer-events: none; }
 .timeline-now::before {
   content: '';
   position: absolute;
@@ -1592,6 +1605,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   gap: 14px;
   align-items: start;
   min-height: 100%;
+  max-width: 1200px;
 }
 
 .split-list {
@@ -1710,8 +1724,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
   transition: width 260ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* Hours are not money, so their row sits apart from the four that are. */
-.totals li.is-hours { grid-column: 1 / -1; flex-direction: row; align-items: baseline; justify-content: space-between; gap: 8px; }
 .totals-of { font-size: var(--t-meta); font-weight: 500; color: var(--text-faint); }
 
 /* ---------- attaching a card that already exists ---------- */
@@ -1817,7 +1829,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .cat-remove { flex: none; padding: 2px 7px; }
 
 /* The card window: the same body, in a taller frame than Settings uses. */
-.modal.is-card { width: min(560px, 100%); max-height: min(88vh, 860px); }
+.modal.is-card { width: min(620px, 100%); max-height: min(88vh, 860px); }
 .modal.is-card .drawer-body { padding: 14px; overflow-y: auto; }
 
 /* Full screen: the same head + body, floated at 90% of the viewport rather
@@ -2273,8 +2285,8 @@ select.proj-cell.is-client { border-left: 4px solid var(--chip, var(--line)); }
 
 /* The money strip above the project list lives in a sidebar, so it is a fixed
    2x2 — auto-fit gives it three across and a lonely fourth underneath. */
-.totals.is-tight { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-.totals.is-tight li { padding: 6px 8px; }
+.totals.is-tight { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.totals.is-tight li { padding: 8px 10px; }
 .totals.is-tight .totals-value { font-size: var(--t-item); }
 
 /* A section that is only of interest if the usual path doesn't fit you. */
@@ -2363,7 +2375,7 @@ button.chip:hover { transform: translateY(-1px); }
 
 /* A timeline slot under the pointer comes forward a little. */
 .slot { transition: box-shadow 140ms, filter 140ms; }
-.slot:hover { box-shadow: var(--shadow-2); filter: saturate(1.08); }
+.slot:hover { box-shadow: var(--shadow-2); filter: saturate(1.08); z-index: 3; }
 .slot.is-dragging { transition: none; }
 
 /**
@@ -3207,6 +3219,14 @@ button.chip:hover { transform: translateY(-1px); }
 .team-user-meta .dim {
   font-size: var(--t-meta);
   color: var(--text-faint);
+}
+
+.panel-select {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: inherit;
 }
 
 .team-select-compact {
