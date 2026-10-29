@@ -9,6 +9,7 @@ import {
   normalise,
   pastUnfinishedCards,
   reducer,
+  syncTimelineUpdates,
 } from '../src/store.ts';
 import { cardLoggedHours, projectNet, projectTotal } from '../src/types.ts';
 
@@ -33,7 +34,7 @@ test('rolloverPast moves unfinished cards from past days into Today above done c
   assert.deepEqual(rolled.lanes['2026-04-12'], ['c3', 'c1', 'c4']);
 });
 
-test('cardLoggedHours prefers logged CardUpdate minutes and falls back to estimate when done', () => {
+test('cardLoggedHours prefers logged CardUpdate minutes, timeline placement, and falls back to estimate when done', () => {
   const c1 = newCard('With updates', {
     status: 'doing',
     estimate: 4,
@@ -46,6 +47,18 @@ test('cardLoggedHours prefers logged CardUpdate minutes and falls back to estima
     estimate: 2.5,
   });
   assert.equal(cardLoggedHours(c2), 2.5);
+
+  const c3 = newCard('Placed on timeline', {
+    status: 'todo',
+    start: 600,
+    estimate: 1.25,
+  });
+  assert.equal(cardLoggedHours(c3), 1.25);
+
+  const synced = syncTimelineUpdates(c3, 105, '2026-04-12', 'capture');
+  assert.equal(synced.length, 1);
+  assert.equal(synced[0].minutes, 105);
+  assert.equal(cardLoggedHours({ ...c3, updates: synced }), 1.75);
 });
 
 test('staged billing milestones split projects across invoice months in billingMonths', () => {

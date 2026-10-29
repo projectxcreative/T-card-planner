@@ -117,6 +117,57 @@ export function newCardUpdate(categoryId: string, minutes: number, note = '', da
   };
 }
 
+/**
+ * Synchronises a card's discrete work updates (`card.updates`) to match a target
+ * total of `minutes` when the card is placed or resized on the Day timeline.
+ */
+export function syncTimelineUpdates(
+  card: Card,
+  minutes: number,
+  date: string,
+  defaultCategoryId: string,
+): CardUpdate[] {
+  const target = Math.max(0, Math.round(minutes));
+  if (target === 0) return [];
+  if (card.updates.length === 0) {
+    return [newCardUpdate(defaultCategoryId, target, '', date)];
+  }
+  if (card.updates.length === 1) {
+    return [{ ...card.updates[0], minutes: target, date: card.updates[0].date || date }];
+  }
+  const currentTotal = card.updates.reduce((sum, u) => sum + u.minutes, 0);
+  const delta = target - currentTotal;
+  if (delta === 0) return card.updates;
+
+  const next = card.updates.map((u) => ({ ...u }));
+  if (delta > 0) {
+    let idx = -1;
+    for (let i = next.length - 1; i >= 0; i--) {
+      if (next[i].date === date) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx === -1) idx = next.length - 1;
+    next[idx].minutes += delta;
+    return next;
+  }
+
+  let toRemove = -delta;
+  const order = [
+    ...next.map((_, i) => i).filter((i) => next[i].date === date).reverse(),
+    ...next.map((_, i) => i).filter((i) => next[i].date !== date).reverse(),
+  ];
+  for (const idx of order) {
+    if (toRemove <= 0) break;
+    const take = Math.min(next[idx].minutes, toRemove);
+    next[idx].minutes -= take;
+    toRemove -= take;
+  }
+  const kept = next.filter((u) => u.minutes > 0);
+  return kept.length > 0 ? kept : [newCardUpdate(defaultCategoryId, target, '', date)];
+}
+
 export function newProject(title: string, patch: Partial<Project> = {}): Project {
   const now = new Date().toISOString();
   return {
@@ -630,16 +681,23 @@ export function reducer(state: BoardState, action: Action): BoardState {
     case 'addUpdate': {
       const card = state.cards[action.cardId];
       if (!card) return state;
-      const updated: Card = { ...card, updates: [...card.updates, action.update], updatedAt: new Date().toISOString() };
+      const updates = [...card.updates, action.update];
+      const totalMins = updates.reduce((sum, u) => sum + u.minutes, 0);
+      const estimate = card.start != null && totalMins > 0 ? Number((totalMins / 60).toFixed(2)) : card.estimate;
+      const updated: Card = { ...card, updates, estimate, updatedAt: new Date().toISOString() };
       return { ...state, cards: { ...state.cards, [action.cardId]: updated } };
     }
 
     case 'patchUpdate': {
       const card = state.cards[action.cardId];
       if (!card || !card.updates.some((u) => u.id === action.updateId)) return state;
+      const updates = card.updates.map((u) => (u.id === action.updateId ? { ...u, ...action.patch } : u));
+      const totalMins = updates.reduce((sum, u) => sum + u.minutes, 0);
+      const estimate = card.start != null && totalMins > 0 ? Number((totalMins / 60).toFixed(2)) : card.estimate;
       const updated: Card = {
         ...card,
-        updates: card.updates.map((u) => (u.id === action.updateId ? { ...u, ...action.patch } : u)),
+        updates,
+        estimate,
         updatedAt: new Date().toISOString(),
       };
       return { ...state, cards: { ...state.cards, [action.cardId]: updated } };
@@ -648,9 +706,13 @@ export function reducer(state: BoardState, action: Action): BoardState {
     case 'deleteUpdate': {
       const card = state.cards[action.cardId];
       if (!card || !card.updates.some((u) => u.id === action.updateId)) return state;
+      const updates = card.updates.filter((u) => u.id !== action.updateId);
+      const totalMins = updates.reduce((sum, u) => sum + u.minutes, 0);
+      const estimate = card.start != null && totalMins > 0 ? Number((totalMins / 60).toFixed(2)) : card.estimate;
       const updated: Card = {
         ...card,
-        updates: card.updates.filter((u) => u.id !== action.updateId),
+        updates,
+        estimate,
         updatedAt: new Date().toISOString(),
       };
       return { ...state, cards: { ...state.cards, [action.cardId]: updated } };

@@ -474,11 +474,12 @@ export function totalUpdateMinutes(updates: CardUpdate[]): number {
   return updates.reduce((sum, update) => sum + update.minutes, 0);
 }
 
-/** Hours logged on a card: discrete updates if logged, otherwise the card's
- *  estimate once marked Done. */
+/** Hours logged on a card: discrete updates if logged, otherwise its timeline
+ *  duration when placed on a day's timeline, or its estimate once marked Done. */
 export function cardLoggedHours(card: Card): number {
   const fromUpdates = totalUpdateMinutes(card.updates) / 60;
   if (fromUpdates > 0) return fromUpdates;
+  if (card.start != null && card.estimate > 0) return card.estimate;
   return card.status === 'done' ? card.estimate : 0;
 }
 

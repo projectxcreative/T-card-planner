@@ -13,8 +13,9 @@ import {
 import Attachments, { useAttachmentActions } from './Attachments';
 import { useCategories } from '../categories';
 import { useLookups } from '../lookups';
-import { formatMinutes } from '../cardText';
+import { formatEstimate, formatMinutes } from '../cardText';
 import { addDays, formatFullDay, formatTime, todayKey } from '../dates';
+import { syncTimelineUpdates } from '../store';
 import {
   discardTimer,
   pauseTimer,
@@ -28,7 +29,7 @@ import {
 // The editor pulls in ProseMirror; keep it out of the first paint.
 const RichText = lazy(() => import('./RichText'));
 
-const ESTIMATES = [0, 0.25, 0.5, 1, 2, 3, 4, 6, 8];
+const ESTIMATES = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5, 6, 8];
 
 /** Four corner brackets implying a square — reads as "expand" at a glance,
  *  where the diagonal-arrow glyph it replaced didn't. */
@@ -368,7 +369,7 @@ function UpdatesSection({
 function CardBody(props: CardPanelProps) {
   const { card, lane, calendarReady, locked, onPatch, onMove, onAddUpdate, onPatchUpdate, onDeleteUpdate } = props;
   const categories = useCategories();
-  const { projects, clients, clientOrder, categoryOrder, users } = useLookups();
+  const { projects, clients, clientOrder, categoryOrder, updateCategoryOrder, users } = useLookups();
   const [html, setHtml] = useState(card.description);
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
@@ -491,11 +492,26 @@ function CardBody(props: CardPanelProps) {
             <span className="field-label">Size</span>
             <select
               value={card.estimate}
-              onChange={(event) => onPatch(card.id, { estimate: Number(event.target.value) })}
+              onChange={(event) => {
+                const estimate = Number(event.target.value);
+                const patch: Partial<Card> = { estimate };
+                if (card.start != null && lane !== BACKLOG && updateCategoryOrder[0]) {
+                  patch.updates = syncTimelineUpdates(
+                    card,
+                    Math.round(estimate * 60),
+                    lane,
+                    updateCategoryOrder[0],
+                  );
+                }
+                onPatch(card.id, patch);
+              }}
             >
-              {ESTIMATES.map((hours) => (
+              {(ESTIMATES.includes(card.estimate)
+                ? ESTIMATES
+                : [...ESTIMATES, card.estimate].sort((a, b) => a - b)
+              ).map((hours) => (
                 <option key={hours} value={hours}>
-                  {hours === 0 ? 'Unsized' : hours < 1 ? `${hours * 60} min` : `${hours} h`}
+                  {hours === 0 ? 'Unsized' : formatEstimate(hours)}
                 </option>
               ))}
             </select>

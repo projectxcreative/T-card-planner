@@ -1,7 +1,7 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import type { Card, LaneId } from '../types';
-import { STATUS_LABELS } from '../types';
+import { STATUS_LABELS, cardLoggedHours } from '../types';
 import { formatEstimate } from '../cardText';
 import { formatDayName, formatDayNumber, fromKey, isSameMonth, isToday, isWeekend } from '../dates';
 import type { CalendarEvent } from '../m365';
@@ -57,7 +57,7 @@ function DayCell(props: {
   const { day, anchor, cards, events, matches, onOpen, onOpenDay } = props;
   const { setNodeRef, isOver } = useDroppable({ id: `lane:${day}`, data: { type: 'lane', lane: day } });
 
-  const logged = cards.reduce((sum, card) => sum + (card.status === 'done' ? card.estimate : 0), 0);
+  const logged = cards.reduce((sum, card) => sum + cardLoggedHours(card), 0);
   const shown = cards.slice(0, CHIP_LIMIT);
   const hidden = cards.length - shown.length;
 

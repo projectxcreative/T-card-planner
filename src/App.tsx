@@ -272,11 +272,12 @@ export default function App() {
         : formatWeekRange(days);
 
   const banner = m365.error ?? publishing.error;
+  const activeCardSurface = ui.view === 'day' ? 'drawer' : settings.cardSurface;
 
   return (
     <CategoriesProvider value={board.categories}>
       <LookupsProvider value={lookups}>
-        <div className={openCard && settings.cardSurface === 'drawer' ? 'app has-drawer' : 'app'}>
+        <div className={openCard && activeCardSurface === 'drawer' ? 'app has-drawer' : 'app'}>
           <TopBar
             view={ui.view}
             onView={uiActions.setView}
@@ -390,12 +391,17 @@ export default function App() {
               <DayView
                 day={ui.focus}
                 cards={cardsIn(board, ui.focus)}
+                backlogCards={cardsIn(board, BACKLOG)}
                 events={m365.events.get(ui.focus) ?? []}
                 settings={settings}
                 calendarReady={calendarReady}
                 locked={locked}
+                openCardId={ui.openCardId}
+                matches={matches}
                 onOpen={uiActions.setOpenCardId}
                 onPatch={boardActions.patchCard}
+                onMove={boardActions.moveCard}
+                onSnapshot={boardActions.snapshot}
                 onQuickAdd={(lane, title) => boardActions.quickAdd(lane, title, defaultCategoryId)}
               />
             </main>
@@ -446,7 +452,7 @@ export default function App() {
               key={openCard.id}
               card={openCard}
               lane={openLane}
-              surface={settings.cardSurface}
+              surface={activeCardSurface}
               calendarReady={calendarReady}
               locked={locked}
               onPatch={boardActions.patchCard}
