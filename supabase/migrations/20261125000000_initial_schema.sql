@@ -180,6 +180,8 @@ create table public.cards (
   -- The one client this card is for: who may see it, if it is shared.
   client_id text references public.clients (id) on delete set null,
   client_visible boolean not null default false,
+  -- The staff member doing it, if anyone in particular.
+  assignee_id uuid references auth.users (id) on delete set null,
   publish boolean not null default false,
   event_id text,
   completed_at timestamptz,
