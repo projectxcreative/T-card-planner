@@ -14,6 +14,12 @@ interface ImportMetaEnv {
   readonly VITE_M365_CLIENT_ID?: string;
   /** `common`, `organizations`, or a specific tenant id. Defaults to `common`. */
   readonly VITE_M365_TENANT?: string;
+  /** The Supabase project URL. When set, the app signs in and stores the
+   *  board with Supabase instead of the Cloudflare Worker. */
+  readonly VITE_SUPABASE_URL?: string;
+  /** The project's publishable (anon) key. Safe to ship: row-level security,
+   *  not this key, is what limits what a signed-in user can read. */
+  readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
 }
 
 interface ImportMeta {
