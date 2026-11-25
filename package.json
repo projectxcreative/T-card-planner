@@ -11,7 +11,8 @@
     "dev:worker": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "deploy:demo": "npm run build && wrangler deploy --config wrangler.demo.jsonc",
-    "deploy:all": "npm run build && wrangler deploy && wrangler deploy --config wrangler.demo.jsonc"
+    "deploy:all": "npm run build && wrangler deploy && wrangler deploy --config wrangler.demo.jsonc",
+    "test:db": "supabase/tests/run.sh"
   },
   "repository": {
     "type": "git",
