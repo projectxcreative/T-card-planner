@@ -7,7 +7,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
-    "test": "node --test \"worker/**/*.test.mjs\"",
+    "test": "node --test \"worker/**/*.test.mjs\" \"src/**/*.test.ts\"",
     "dev:worker": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "deploy:demo": "npm run build && wrangler deploy --config wrangler.demo.jsonc",

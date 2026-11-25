@@ -34,3 +34,4 @@ grant all on storage.objects to authenticated;
 -- Supabase's defaults: the API roles get table rights, and RLS does the rest.
 alter default privileges in schema public grant all on tables to anon, authenticated;
 alter default privileges in schema public grant all on functions to anon, authenticated;
+create publication supabase_realtime;

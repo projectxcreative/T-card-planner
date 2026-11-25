@@ -12,6 +12,7 @@ here changes it yet.
 | `migrations/20261125000000_initial_schema.sql` | Tables: profiles, clients, client members, projects, milestones, expenses, cards, internal notes, time entries, attachments, calendar feed |
 | `migrations/20261125000100_access_rules.sql` | Row-level security: staff see everything; clients see only the `portal_*` views, filtered to their own client |
 | `migrations/20261125000200_storage.sql` | Private `attachments` bucket; clients can download only files shared on cards shared with them |
+| `migrations/20261125000300_realtime.sql` | Live updates between signed-in devices |
 | `tests/run.sh` | Spins up a throwaway local Postgres, applies the migrations, runs the tests |
 | `../scripts/board-to-sql.mjs` | Converts a board export (Settings → Backup) into SQL for the new tables |
 
@@ -33,7 +34,7 @@ never in a portal view.
 
 1. Create a project at [supabase.com](https://supabase.com/dashboard), region
    **London (eu-west-2)**. Keep the database password somewhere safe.
-2. **SQL editor:** paste and run the three migration files, in order.
+2. **SQL editor:** paste and run the four migration files, in order.
    (Or with the Supabase CLI: `supabase link` then `supabase db push`.)
 3. **Authentication → Sign In / Providers:**
    - Turn **off** "Allow new users to sign up". Only people you invite get in.
@@ -61,10 +62,24 @@ Run `import.sql` in the SQL editor. It is one transaction. Nothing arrives
 shared with clients. The script prints an attachment manifest to stderr: the
 files themselves are copied from KV to Storage as a separate step.
 
+## Running the app against Supabase
+
+`cp .env.supabase .env.local && npm run dev`. With those two variables set:
+
+- `src/Root.tsx` asks for an emailed sign-in link and lets only staff in.
+- `src/backend/useSupabaseSync.ts` replaces the Worker sync: it loads the
+  board from the tables, saves only the rows that changed
+  (`src/backend/boardRows.ts`, tested in `boardRows.test.ts`), and reloads
+  when another device changes something.
+- If the database has no cards yet and this device has a board, the first
+  save uploads it. That is an alternative to the import script.
+
+Without them the app runs on the Cloudflare Worker exactly as before.
+
 ## Still to do in phase 1
 
-- Front end: replace the KV sync (`src/sync.ts`, `src/store/boardStore.ts`)
-  with Supabase reads and writes, and the Access login with Supabase Auth.
-- Copy attachment files from KV to Storage, and rewrite `/api/files/<id>`
+- Team management screen: invite and remove staff through Supabase (for now,
+  invite in the Supabase dashboard).
+- Upload new attachments to Storage (they stay on the device for now), copy existing files from KV, and rewrite `/api/files/<id>`
   image links inside card and project descriptions.
 - Move the ICS calendar feed and its token check to a Supabase Edge Function.
