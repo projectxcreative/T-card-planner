@@ -42,6 +42,11 @@ import {
 } from './dates';
 import { summarise } from './cardText';
 import { useSync } from './sync';
+import { usingSupabase } from './backend/supabase';
+import { useSupabaseSync } from './backend/useSupabaseSync';
+
+// Fixed for the life of the build, so the hook choice never changes between renders.
+const useBoardSync = usingSupabase ? useSupabaseSync : useSync;
 import { flushUploads, referencedFileIds, setRemoteFiles, sweepAttachments } from './attachments';
 import { useAppUpdate } from './updates';
 import { effectiveConfig, useM365, usePublishing } from './m365';
@@ -79,14 +84,15 @@ export default function App() {
   useCategoryColours(board.categories);
 
   // Sync with Worker
-  const sync = useSync(board, boardActions.swapBoard);
+  const sync = useBoardSync(board, boardActions.swapBoard);
   const update = useAppUpdate();
 
   // Offline no longer locks the board! Only an unresolved conflict pauses mutations.
   const locked = sync.status === 'conflict';
 
   // Remote file synchronisation
-  const filesRemote = sync.status !== 'off' && sync.status !== 'unconfigured';
+  // Files stay on the device under Supabase until Storage uploads are wired up.
+  const filesRemote = !usingSupabase && sync.status !== 'off' && sync.status !== 'unconfigured';
   useEffect(() => {
     setRemoteFiles(filesRemote);
   }, [filesRemote]);
